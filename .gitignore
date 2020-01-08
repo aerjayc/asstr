@@ -5,3 +5,4 @@ __pycache__/
 *.code-workspace
 
 images/
+test.py
