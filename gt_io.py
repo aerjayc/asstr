@@ -39,6 +39,7 @@ if __name__ == '__main__':
         # text in imname_i
         txt_i = f[f['txt'][i][0]]
         pseudoGT_region, pseudoGT_affinity = image_proc.genPseudoGT(charBB_i, txt_i, image_shape)
+        cosf, sinf = image_proc.genDirectionGT(charBB_i, image_shape)
 
         Path(os.path.split(pseudoGT_path)[0]).mkdir(parents=True, exist_ok=True)
         print(f"\tsaving to {pseudoGT_path}")
@@ -47,8 +48,20 @@ if __name__ == '__main__':
         # plt.figure()
         # plt.imshow(pseudoGT_region, interpolation='nearest')
         # plt.colorbar()
+        
         # plt.figure()
         # plt.imshow(pseudoGT_affinity, interpolation='nearest')
         # plt.colorbar()
+        
+        # plt.figure()
+        # plt.title('cosine field')
+        # plt.imshow(cosf, interpolation='nearest')
+        # plt.colorbar()
+        
+        # plt.figure()
+        # plt.title('sine field')
+        # plt.imshow(sinf, interpolation='nearest')
+        # plt.colorbar()
+
         # plt.show()
         # break

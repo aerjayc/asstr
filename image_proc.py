@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.path import Path
 import cv2
 
 # matfile-specific functions
@@ -16,24 +17,29 @@ def u2ToStr(u2, truncate_space=False):
 
 # general, low-level image-processing functions
 def getPixelAngle(origin, pt, units='radians'):
-    pt_o = pt - origin
+    x,y = pt - origin
 
-    if pt_o[0] == 0:
+    if x == 0:
         angle = np.pi/2
-    elif pt_o[0] > 0:
-        angle = np.arctan(pt_o[1]/pt_o[0])
-    else:
-        angle = np.arctan(pt_o[1]/pt_o[0]) + np.pi
-    
+    angle = np.arctan(y/x)
+    if x < 0: # quadrant II and III
+        angle += np.pi
+    elif y < 0:   # quadrant IV
+        angle += 2*np.pi
+
     if units != 'radians':
         angle *= 180/np.pi
 
     return angle
 
 def getPixelAngles(origin, pts, units='radians'):
-    angles = np.zeros(pts.shape[0], dtype='float32')
-    for i, pt in enumerate(pts):
+    angles = np.zeros(pts.shape[:-1], dtype='float32')
+    angles = angles.reshape((-1,1))
+
+    for i, pt in enumerate(pts.reshape((-1,2))):
         angles[i] = getPixelAngle(origin, pt, units=units)
+    
+    angles = angles.reshape(pts.shape[:-1])
 
     return angles
 
@@ -78,6 +84,10 @@ def getMaxSize(BBcoords):
 def order_points(pts):
     centroid = getCentroid(pts)
     angles = getPixelAngles(centroid, pts)
+    for i, angle in enumerate(angles):  # take 90 degrees as min to get
+        if 0 <= angle <= np.pi/2:       # top left vertex as initial pt
+            angles[i] += 360
+
     ordered_pts = pts[len(pts)-1 - np.argsort(angles)]
     ordered_pts = ordered_pts[np.arange(len(pts))-1].astype('float32')
 
@@ -170,6 +180,40 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
 
     return pseudoGT_region, pseudoGT_affinity
 
+# Direction GT
+def genDirectionGT(charBB_i, img_size):
+    cosf = np.zeros(img_size)
+    sinf = np.zeros(img_size)
+    for charBB in charBB_i:
+        cos_angle, sin_angle = genDirectionMap(charBB, img_size)
+        cosf += cos_angle
+        sinf += sin_angle
+
+    return cosf, sinf
+
+def genDirectionMap(charBB, img_size):
+    centroid = getCentroid(charBB)
+    x_min, y_min = np.min(charBB, axis=0)
+    x_max, y_max = np.max(charBB, axis=0)
+
+    # https://stackoverflow.com/questions/21339448/how-to-get-list-of-points-inside-a-polygon-in-python
+    x,y = np.meshgrid(np.arange(x_min,x_max), np.arange(y_min,y_max))
+    x,y = x.flatten(), y.flatten()
+    points = np.vstack((x,y)).astype('int32').T
+
+    sin_field = np.zeros(img_size)
+    cos_field = np.zeros(img_size)
+    # angle_field = np.zeros(img_size)
+
+    p = Path(charBB)
+    for pt in points:
+        if p.contains_point(pt):
+            angle = getPixelAngle(centroid, pt)
+            # angle_field[pt[1], pt[0]] = angle
+            cos_field[pt[1], pt[0]] = np.cos(angle)
+            sin_field[pt[1], pt[0]] = np.sin(angle)
+
+    return cos_field, sin_field
 
 
 if __name__ == '__main__':
