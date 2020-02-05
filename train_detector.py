@@ -34,7 +34,7 @@ class SynthCharMapDataset(Dataset):
         self.length = 0
         fs = []
         for filename in os.scandir(gt_dir):
-            if filename.endswith('.mat'):
+            if filename.name.endswith('.mat'):
                 f = h5py.File(filename, 'r')
                 fs.append(f)
                 self.length += len(f['imnames'])
@@ -52,7 +52,7 @@ class SynthCharMapDataset(Dataset):
         imgnum = idx % bound
 
         f = self.fs[matnum]
-        imgname = f[f['imnames'][imgnum][0]]
+        imgname = image_proc.u2ToStr(f[f['imnames'][imgnum][0]])
         charBBs = f[f['charBB'][imgnum][0]]
         txts    = f[f['txt'][imgnum][0]]
 
@@ -66,12 +66,16 @@ class SynthCharMapDataset(Dataset):
         # gt = {'char_map': char_map, 'aff_map': aff_map,
         #       'cos_map': cos_map, 'sin_map': sin_map}
 
-        gt = np.concatenate(char_map, aff_map, cos_map, sin_map)
+        gt = np.stack((char_map, aff_map, cos_map, sin_map), axis=0)
+        # print(f"gt.shape = {gt.shape}")
 
+        # resize to match feature map size
         height, width = image_shape
         gt_shape = int(width/2), int(height/2)
+        gt_resized = np.zeros((gt.shape[0], gt_shape[1], gt_shape[0]))
+        print(f"out.shape = {gt_resized.shape}")
         for j, img in enumerate(gt):
-            gt[j,:,:] = cv2.resize(img, gt_shape, interpolation=cv2.INTER_AREA)
+            gt_resized[j] = cv2.resize(img, gt_shape, interpolation=cv2.INTER_AREA)
 
         return synthetic_image, gt
 
