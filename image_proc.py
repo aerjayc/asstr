@@ -16,6 +16,31 @@ def u2ToStr(u2, truncate_space=False):
     return s
 
 # general, low-level image-processing functions
+def wh2xy(x,y,w,h):
+    return np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
+
+def genCharBB(heatmap, thresh=0.5, max_thresh=1):
+    ret,img_binary = cv2.threshold(heatmap,thresh,max_thresh,cv2.THRESH_BINARY)
+    #img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+
+    contours, hier = cv2.findContours(img_binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    #image, contours, hier = cv2.findContours(threshed_img, cv2.RETR_TREE,
+    #                cv2.CHAIN_APPROX_SIMPLE)
+
+    # with each contour, draw boundingRect in green
+    p = []
+    for c in contours:
+      # get the bounding rect
+      x, y, w, h = cv2.boundingRect(c)
+
+      p += [wh2xy(x,y,w,h)]
+
+      # draw a green rectangle to visualize the bounding rect
+      cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 1)
+
+    return np.array(p)
+
 def getPixelAngle(origin, pt, units='radians'):
     x,y = pt - origin
 
