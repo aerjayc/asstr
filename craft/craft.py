@@ -28,7 +28,7 @@ class double_conv(nn.Module):
 
 
 class CRAFT(nn.Module):
-    def __init__(self, pretrained=False, freeze=False):
+    def __init__(self, pretrained=False, freeze=False, num_class=2):
         super(CRAFT, self).__init__()
 
         """ Base network """
@@ -40,7 +40,7 @@ class CRAFT(nn.Module):
         self.upconv3 = double_conv(256, 128, 64)
         self.upconv4 = double_conv(128, 64, 32)
 
-        num_class = 2
+        # num_class = 2
         self.conv_cls = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True),
             nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(inplace=True),

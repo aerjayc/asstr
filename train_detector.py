@@ -81,6 +81,38 @@ class SynthCharMapDataset(Dataset):
 
 
 if __name__ == '__main__':
-    model = CRAFT(pretrained=False)
-    output, features = model(torch.randn(1,3,768,768))
-    print(output.shape)
+    # model = CRAFT(pretrained=True)
+    # output, features = model(torch.randn(1,3,768,768))
+    # print(output.shape)
+    
+    gt_dir = "/home/eee198/Downloads/SynthText/matfiles"
+    img_dir = "/home/eee198/Downloads/SynthText/images"
+
+
+    # remember requires_grad=True
+    dataloader = SynthCharMapDataset(gt_dir, img_dir)
+
+    criterion = nn.MSELoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001)
+
+    epochs = 10
+    for epoch in range(epochs):
+        running_loss = 0.0
+
+        for i, img, target in enumerate(dataloader):
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            output = model(img)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if i % 2000 == 1999:    # print every 2000 mini-batches
+                print('[%d, %5d] loss: %.3f'.format(epoch + 1, i + 1, running_loss/2000))
+                running_loss = 0.0
+
+    print("Finished training.")
