@@ -42,3 +42,43 @@ gt.mat
          ';': 5439, '&': 3075, '+': 2463, 'Q': 6569, '$': 11250, '@': 7708, '/': 10237,
          '|': 3972, '!': 9441, '<': 1989, '#': 3431, '`': 1166, '{': 549, '~': 469,
          '\\': 242, '}': 492, '^': 166}``
+
+
+### Problems/notes
+
+- dataset sample 196 produces warning `/home/eee198/Documents/ocr/asstr/image_proc.py:28: RuntimeWarning: invalid value encountered in float_scalars
+  angle = np.arctan(y/x)`
+    - 8/ballet_107_79.jpg
+
+- dataset sample in [33600, 33700] produces error `error: OpenCV(3.4.2) /tmp/build/80754af9/opencv-suite_1535558553474/work/modules/imgproc/src/imgwarp.cpp:2902: error: (-215:Assertion failed) _src.total() > 0 in function 'warpPerspective'`
+
+- dataset sample 1150 produces error: `error: OpenCV(3.4.2) /tmp/build/80754af9/opencv-suite_1535558553474/work/modules/imgproc/src/imgwarp.cpp:2902: error: (-215:Assertion failed) _src.total() > 0 in function 'warpPerspective'`
+    - due to affinityBB
+
+- dataset sample in [189, 199), [1479,1489) produces warning `/home/eee198/Documents/ocr/asstr/image_proc.py:24: RuntimeWarning: invalid value encountered in float_scalars angle = np.arctan(y/x)`
+    - origin = (0,0), BBcoords = (0,0), occurs during regionBB
+
+- minibatching will cause problems when the image shapes are not equal
+    - padding
+    - resizing (distortion)
+- on the fly GT creation is a bottleneck
+- no errors up to 10000
+
+
+### To do
+
+- sigmoid
+    - note: can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
+- train/val/test split
+- normalization (done)
+- batch normalization
+- make all functions use gpu
+    - halving the output features should be done in gpu
+- test overfitting
+- hard example mining
+
+
+### Useful scripts:
+- to count unique image bases: `ls -Rp | sed -n "s/\(.*\)_[0-9]*_[0-9]*\.jpg/\1/p" | sort | uniq | wc -l`
+    - (110 images)
+    - misleading, some distinct images share same base filename

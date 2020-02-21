@@ -19,6 +19,10 @@ def u2ToStr(u2, truncate_space=False):
 def getPixelAngle(origin, pt, units='radians'):
     x,y = pt - origin
 
+    # if (x == 0) and (y == 0):
+    #     print("warning: x=y=0")
+    #     print(f"origin = {origin}\tpt = {pt}")
+    #print(f"x,y = {x}, {y}")
     if x == 0:
         angle = np.pi/2
     angle = np.arctan(y/x)
@@ -36,7 +40,9 @@ def getPixelAngles(origin, pts, units='radians'):
     angles = np.zeros(pts.shape[:-1], dtype='float32')
     angles = angles.reshape((-1,1))
 
+    # print("getting pixel angle")
     for i, pt in enumerate(pts.reshape((-1,2))):
+        # if np
         angles[i] = getPixelAngle(origin, pt, units=units)
     
     angles = angles.reshape(pts.shape[:-1])
@@ -178,6 +184,9 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
             pseudoGT_affinity += genDistortedGauss(affinityBB, img_size=image_shape)
         charBB_prev = charBB
 
+    if not generate_affinity:
+        pseudoGT_affinity = None
+    
     return pseudoGT_region, pseudoGT_affinity
 
 # Direction GT

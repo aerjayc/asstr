@@ -47,6 +47,7 @@ class CRAFT(nn.Module):
             nn.Conv2d(32, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True),
             nn.Conv2d(16, 16, kernel_size=1), nn.ReLU(inplace=True),
             nn.Conv2d(16, num_class, kernel_size=1),
+            nn.Sigmoid()    # assuming gt is between 0 and 1
         )
 
         init_weights(self.upconv1.modules())
