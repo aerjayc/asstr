@@ -92,28 +92,30 @@ def order_points(pts):
     angles = getPixelAngles(centroid, pts)
     for i, angle in enumerate(angles):  # take 90 degrees as min to get
         if 0 <= angle <= np.pi/2:       # top left vertex as initial pt
-            angles[i] += 360
+            angles[i] += 2*np.pi
 
+    # sort by pts by angle (descending)
     ordered_pts = pts[len(pts)-1 - np.argsort(angles)]
+    # put last pt (least angle i.e. pt nearest to y-axis at QII) to start
     ordered_pts = ordered_pts[np.arange(len(pts))-1].astype('float32')
 
     return ordered_pts
 
 # high-level image-processing functions
 def perspectiveTransform(image, initial=None, final=None, size=None):
-    if type(initial) == type(None):
+    if initial is None:
         height, width = image.shape
         initial = np.array([[0, 0],
                             [width-1, 0],
                             [width-1, height-1],
                             [0, height-1]], dtype = "float32")
-    if type(final) == type(None):
+    if final is None:
         maxWidth, maxHeight = getMaxSize(initial)
         final = np.array([[0, 0],
                           [maxWidth-1, 0],
                           [maxWidth-1, maxHeight-1],
                           [0, maxHeight-1]], dtype = "float32")
-    if type(size) == type(None):
+    if size is None:
         w = max(final.T[0])
         h = max(final.T[1])
     else:
@@ -128,12 +130,15 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
     return warped
 
 def genDistortedGauss(BBcoords, img_size):
+    size = max(getMaxSize(BBcoords))
+    if not size:
+        return None
+
     x_mean = 0
     y_mean = 0
     variance = 1
     height = np.sqrt(2*np.pi*variance)
 
-    size = max(getMaxSize(BBcoords))
     bounds = 2.5
 
     x = np.linspace(-bounds, bounds, size)
@@ -176,12 +181,19 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
     for j, charBB in enumerate(charBB_i):
-        pseudoGT_region += genDistortedGauss(charBB, img_size=image_shape)
+        region_mask = genDistortedGauss(charBB, img_size=image_shape)
+        if not (region_mask is None):
+            pseudoGT_region += region_mask
         
         # if prev char is not a breakpoint = if curr char same instance as prev
         if ((j-1) not in breakpoints) and (j > 0) and generate_affinity:
+            if region_mask is None:    # if previous char (assuming same instance) has zero size
+                continue
+
             affinityBB = order_points(getAffinityBB(charBB_prev, charBB))
-            pseudoGT_affinity += genDistortedGauss(affinityBB, img_size=image_shape)
+            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape)
+            if not (affinity_mask is None):
+                pseudoGT_affinity += affinity_mask
         charBB_prev = charBB
 
     if not generate_affinity:
