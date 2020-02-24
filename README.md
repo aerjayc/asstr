@@ -67,6 +67,7 @@ gt.mat
 
 ### To do
 
+- the rest of the GT maps
 - sigmoid
     - note: can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
 - train/val/test split
