@@ -37,7 +37,7 @@ def getPixelAngle(origin, pt, units='radians'):
     return angle
 
 def getPixelAngles(origin, pts, units='radians'):
-    angles = np.zeros(pts.shape[:-1], dtype='float32')
+    angles = np.zeros(pts.shape[:-1], dtype='float16')
     angles = angles.reshape((-1,1))
 
     # print("getting pixel angle")
@@ -108,13 +108,13 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
         initial = np.array([[0, 0],
                             [width-1, 0],
                             [width-1, height-1],
-                            [0, height-1]], dtype = "float32")
+                            [0, height-1]], dtype = "float16")
     if final is None:
         maxWidth, maxHeight = getMaxSize(initial)
         final = np.array([[0, 0],
                           [maxWidth-1, 0],
                           [maxWidth-1, maxHeight-1],
-                          [0, maxHeight-1]], dtype = "float32")
+                          [0, maxHeight-1]], dtype = "float16")
     if size is None:
         w = max(final.T[0])
         h = max(final.T[1])
@@ -176,7 +176,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     # instances = txtToInstance(txt)
     # entire_string = ''.join(instances)
 
-    pseudoGT_blank = np.zeros(image_shape, dtype='float')
+    pseudoGT_blank = np.zeros(image_shape, dtype='float16')
     pseudoGT_region = pseudoGT_blank.copy()
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
@@ -201,10 +201,18 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     
     return pseudoGT_region, pseudoGT_affinity
 
+def genWordGT(wordBB_i, image_shape):
+    mask = np.zeros(image_shape, dtype='float16')
+    for j, wordBB in enumerate(wordBB_i):
+        mask += genDistortedGauss(wordBB, img_size=image_shape)
+
+    return mask
+
+
 # Direction GT
 def genDirectionGT(charBB_i, img_size):
-    cosf = np.zeros(img_size)
-    sinf = np.zeros(img_size)
+    cosf = np.zeros(img_size, dtype='float16')
+    sinf = np.zeros(img_size, dtype='float16')
     for charBB in charBB_i:
         cos_angle, sin_angle = genDirectionMap(charBB, img_size)
         cosf += cos_angle
@@ -222,8 +230,8 @@ def genDirectionMap(charBB, img_size):
     x,y = x.flatten(), y.flatten()
     points = np.vstack((x,y)).astype('int32').T
 
-    sin_field = np.zeros(img_size)
-    cos_field = np.zeros(img_size)
+    sin_field = np.zeros(img_size, dtype='float16')
+    cos_field = np.zeros(img_size, dtype='float16')
     # angle_field = np.zeros(img_size)
 
     p = Path(charBB)
