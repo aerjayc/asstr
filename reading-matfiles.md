@@ -35,27 +35,23 @@ To use this object, we should first know what its structure is:
 ```
 f = {
 	"imnames": [[ref(imnames[0])],
-			  			...,
-				[ref(imnames[N])] ]	
-	"charBB": [[ref(charBB[0]),],	// container of coordinates of charBB's
-						...,
-				[ref(charBB[N])] ],
+  			...,
+		    [ref(imnames[N])]]	
+	"charBB": [[ref(charBB[0])],	// container of coordinates of charBB's
+			...,
+		   [ref(charBB[N])]],
 	"wordBB": [[ref(wordBB[0])],	// container of coordinates of wordBB's 
-						...,
-				[ref(wordBB[N])] ],
+			...,
+		   [ref(wordBB[N])]],
 	"txt": [[ref(txt[0])],		// container of strings
-						...,
-				[ref(txt[N])] ]
+			...,
+		[ref(txt[N])]]
 	}
 ```
 
-where `ref(x)` is a reference (i.e. a pointer) to the variable `x`. So executing just `f["imnames"][0]` will yield a reference to the filename of the image corresponding to the first entry, i.e. `ref(imname[0])`. To dereference any pointer `p = ref(x)`, we simply do
+where `ref(x)` is a reference (i.e. a pointer) to the variable `x`. So executing just `f["imnames"][0]` will yield a reference to the filename of the image corresponding to the first entry, i.e. `ref(imname[0])`. To dereference any pointer `p = ref(x)`, we simply do `x = x[p] = x[ref(x)]`.
 
-```x = x[p] = x[ref(x)]```.
-
-Thus, to get the object representing the filename of the image corresponding to the `i`-th entry in the `.mat` file, simply do
-
-```fname_i = f[f["imnames"][i][0]]```.
+Thus, to get the object representing the filename of the image corresponding to the `i`-th entry in the `.mat` file, simply do `fname_i = f[f["imnames"][i][0]]`.
 
 This is the case for all the other variables (`charBB`, etc.)
 
