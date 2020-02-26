@@ -9,6 +9,7 @@ import gt_io
 import torch
 import torchvision
 from torch import nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -25,34 +26,40 @@ def extendDim(tensor):
 class SynthCharMapDataset(Dataset):
     """SynthText Dataset + Heatmap + Direction Ground Truths"""
 
-    def __init__(self, gt_dir, root_dir, color_flag=1, #transform=None,
-                 character_map=True, affinity_map=True, direction_map=True):
+    def __init__(self, gt_path, img_dir, color_flag=1, begin=0, cuda=True, #transform=None,
+                 character_map=True, affinity_map=True, word_map=True, direction_map=True):
         """
         Args:
-            gt_dir (string): Path to gt_{i}.mat files (GT files)
-            root_dir (string): Path to {j}/....jpg (folders of images)
+            gt_path (string): Path to gt.mat file (GT file)
+            img_dir (string): Path to directory of {i}/....jpg (folders of images)
 
             color_flag {1,0,-1}: Colored (1), Grayscale (0), or Unchanged (-1)
         """
         super(SynthCharMapDataset).__init__()
 
-        self.gt_dir = gt_dir
-        self.root_dir = root_dir
+        # paths
+        self.gt_path = gt_path
+        self.img_dir = img_dir
+
+        # flags
         self.color_flag = color_flag
-        #self.transform = transform
-        #self.transform = transforms.Normalize((0,0,0), (1,1,1))
         self.character_map = character_map
         self.affinity_map = affinity_map
+        self.word_map = word_map
         self.direction_map = direction_map
 
-        self.length = 0
-        fs = []
-        for filename in os.scandir(gt_dir): # not sorted
-            if filename.name.endswith('.mat'):
-                f = h5py.File(filename, 'r')
-                fs.append(f)
-                self.length += len(f['imnames'])
-        self.fs = fs
+        self.f = h5py.File(gt_path, 'r')
+        self.length = len(self.f['imnames'])
+
+        self.begin = 0
+        if begin > 0:
+            self.begin = begin
+            self.length -= begin
+
+        if cuda:
+            self.dtype = torch.cuda.FloatTensor
+        else:
+            self.dtype = torch.FloatTensor
 
     def __len__(self):
         return self.length
@@ -61,66 +68,68 @@ class SynthCharMapDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        bound = 50000
-        matnum = int(idx/bound)
-        imgnum = idx % bound
+        # if changing starting index
+        idx += self.begin
 
-        f = self.fs[matnum]
-        imgname = image_proc.u2ToStr(f[f['imnames'][imgnum][0]])
-        charBBs = f[f['charBB'][imgnum][0]]
-        txts    = f[f['txt'][imgnum][0]]
+        f = self.f
+        imgname = image_proc.u2ToStr(f[f['imnames'][idx][0]])
+        charBBs = f[f['charBB'][idx][0]]
+        wordBBs = f[f['wordBB'][idx][0]]
+        txts    = f[f['txt'][idx][0]]
 
-        imgpath = os.path.join(self.root_dir, imgname)
-        synthetic_image = cv2.imread(imgpath, self.color_flag)
-        synthetic_image = torch.from_numpy(synthetic_image).float().cuda().permute(2,0,1)   # CHW
-        image_shape = synthetic_image.shape[1:]
+        imgpath = os.path.join(self.img_dir, imgname)
+        synthetic_image = cv2.imread(imgpath, self.color_flag)# HWC
+        image_shape = synthetic_image.shape[0:2]
+        synthetic_image = torch.from_numpy(synthetic_image).type(self.dtype).permute(2,0,1)# CHW
+
 
         char_map, aff_map = image_proc.genPseudoGT(charBBs, txts, image_shape,
                                                    generate_affinity=self.affinity_map)
+        if self.word_map:
+            word_map = image_proc.genWordGT(wordBBs, image_shape)
         if self.direction_map:
             cos_map, sin_map  = image_proc.genDirectionGT(charBBs, image_shape)
 
-        # stack the maps
+
         gt = None
         if self.character_map:
             gt = extendDim(char_map)
         if self.affinity_map:
             affinity_map = extendDim(aff_map)
-            if type(gt) == type(None):
+            if gt is None:
                 gt = affinity_map
             else:
                 gt = np.concatenate((gt, affinity_map))
+        if self.word_map:
+            word_map = extendDim(word_map)
+            if gt is None:
+                gt = word_map
+            else:
+                gt = np.concatenate((gt, word_map))
         if self.direction_map:
-            dir_map = np.concatenate((cos_map, sin_map))
-            if type(gt) == type(None):
+            dir_map = np.stack((cos_map, sin_map))
+            if gt is None:
                 gt = dir_map
             else:
-                gt = np.concatenate(gt, dir_map)
+                gt = np.concatenate((gt, dir_map))
+
 
         # resize to match feature map size
-        height, width = image_shape
-        gt_shape = int(width/2), int(height/2)
-        for j, img in enumerate(gt):    # inefficient
-            map_resized = cv2.resize(img, (gt_shape[1],gt_shape[0]), interpolation=cv2.INTER_AREA)
-            if j == 0:
-                gt_resized = extendDim(map_resized)
-            else:
-                gt_resized = np.concatenate(gt_resized, map_resized)
+        # to match expectations of F.interpolate, we reshape to NCHW
+        gt = extendDim(torch.from_numpy(gt).type(self.dtype))
+        gt_resized = F.interpolate(gt, scale_factor=0.5)[0].permute(1,2,0)# HWC
 
-        gt_resized = torch.from_numpy(gt_resized).float().cuda()    # CHW
-        gt_resized = gt_resized.permute(1,2,0)  # HWC
+        #synthetic_image = self.transform(synthetic_image)
+        synthetic_image = synthetic_image / 255.0
 
-        # normalization
-        synthetic_image = synthetic_image / 255.0   # turn this into a transform
-
-        return synthetic_image, gt
+        return synthetic_image.astype('float32'), gt_resized.astype('float32')
 
 
 if __name__ == '__main__':
     # model = CRAFT(pretrained=True)
     # output, features = model(torch.randn(1,3,768,768))
     # print(output.shape)
-    
+
     gt_dir = "/home/eee198/Downloads/SynthText/matfiles"
     img_dir = "/home/eee198/Downloads/SynthText/images"
 
