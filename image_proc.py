@@ -17,10 +17,10 @@ def u2ToStr(u2, truncate_space=False):
 
 # general, low-level image-processing functions
 def getPixelAngle(origin, pt, units='radians'):
-    x,y = pt - origin
+    x,y = (pt - origin).astype('float32')
 
-    # if (x == 0) and (y == 0):
-    #     print("warning: x=y=0")
+    if (x == 0) and (y == 0):
+        print("warning: x=y=0")
     #     print(f"origin = {origin}\tpt = {pt}")
     #print(f"x,y = {x}, {y}")
     if x == 0:
@@ -36,19 +36,6 @@ def getPixelAngle(origin, pt, units='radians'):
 
     return angle
 
-def getPixelAngles(origin, pts, units='radians'):
-    angles = np.zeros(pts.shape[:-1], dtype='float16')
-    angles = angles.reshape((-1,1))
-
-    # print("getting pixel angle")
-    for i, pt in enumerate(pts.reshape((-1,2))):
-        # if np
-        angles[i] = getPixelAngle(origin, pt, units=units)
-    
-    angles = angles.reshape(pts.shape[:-1])
-
-    return angles
-
 def getAffinityBB(charBB1, charBB2):
     edge1 = getAffinityEdge(charBB1)
     edge2 = getAffinityEdge(charBB2)
@@ -57,12 +44,12 @@ def getAffinityBB(charBB1, charBB2):
 def getAffinityEdge(charBB):
     charBB = order_points(charBB)
     BB_center = getCentroid(charBB)
-    tri1 = np.array([charBB[0], charBB[1], BB_center])
+    tri1 = np.array([charBB[0], charBB[1], BB_center], dtype='float32')
     tri1_center = getCentroid(tri1)
-    tri2 = np.array([charBB[2], charBB[3], BB_center])
+    tri2 = np.array([charBB[2], charBB[3], BB_center], dtype='float32')
     tri2_center = getCentroid(tri2)
 
-    return np.array([tri1_center, tri2_center])
+    return np.array([tri1_center, tri2_center], dtype='float32')
 
 def getCentroid(vertices):
     return np.mean(vertices, axis=0)
@@ -88,18 +75,22 @@ def getMaxSize(BBcoords):
     return maxWidth, maxHeight
 
 def order_points(pts):
-    centroid = getCentroid(pts)
-    angles = getPixelAngles(centroid, pts)
-    for i, angle in enumerate(angles):  # take 90 degrees as min to get
-        if 0 <= angle <= np.pi/2:       # top left vertex as initial pt
-            angles[i] += 2*np.pi
+    pts = pts.astype('float32')
+    sorted_y = np.argsort(pts[:,1], axis=0).T
+    
+    top = pts[sorted_y[:2]]
+    tl_i = np.argmin(top[:,0])  # find min x-value (i.e. leftmost) on top
+    tl = top[tl_i]
+    tr = top[1 - tl_i]
 
-    # sort by pts by angle (descending)
-    ordered_pts = pts[len(pts)-1 - np.argsort(angles)]
-    # put last pt (least angle i.e. pt nearest to y-axis at QII) to start
-    ordered_pts = ordered_pts[np.arange(len(pts))-1].astype('float32')
+    bottom = pts[sorted_y[2:]]
+    bl_i = np.argmin(bottom[:,0])  # find min x-value (i.e. leftmost) on bottom
+    bl = bottom[bl_i]
+    br = bottom[1 - bl_i]
 
-    return ordered_pts
+    # print(f"tl = {tl}\ttr = {tr}\nbl = {bl}\tbr = {br}")
+    return np.array([tl,tr,br,bl], dtype='float32')    
+
 
 # high-level image-processing functions
 def perspectiveTransform(image, initial=None, final=None, size=None):
@@ -108,13 +99,13 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
         initial = np.array([[0, 0],
                             [width-1, 0],
                             [width-1, height-1],
-                            [0, height-1]], dtype = "float16")
+                            [0, height-1]], dtype = "float32")
     if final is None:
         maxWidth, maxHeight = getMaxSize(initial)
         final = np.array([[0, 0],
                           [maxWidth-1, 0],
                           [maxWidth-1, maxHeight-1],
-                          [0, maxHeight-1]], dtype = "float16")
+                          [0, maxHeight-1]], dtype = "float32")
     if size is None:
         w = max(final.T[0])
         h = max(final.T[1])
@@ -124,10 +115,10 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
     initial = order_points(initial)
     final = order_points(final)
 
-    M = cv2.getPerspectiveTransform(initial, final)
+    M = cv2.getPerspectiveTransform(initial.astype('float32'), final.astype('float32'))
     warped = cv2.warpPerspective(image, M, (w, h))
 
-    return warped
+    return warped.astype('float32')
 
 def genDistortedGauss(BBcoords, img_size):
     size = max(getMaxSize(BBcoords))
@@ -141,8 +132,8 @@ def genDistortedGauss(BBcoords, img_size):
 
     bounds = 2.5
 
-    x = np.linspace(-bounds, bounds, size)
-    x, y = np.meshgrid(x,x)
+    x = np.linspace(-bounds, bounds, size, dtype='float32')
+    x, y = np.meshgrid(x,x).astype('float32')
     gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
 
     # plt.figure()
@@ -151,7 +142,7 @@ def genDistortedGauss(BBcoords, img_size):
 
     distorted_gauss = perspectiveTransform(gauss, final=BBcoords, size=img_size)
 
-    return distorted_gauss
+    return distorted_gauss.astype('float32')
 
 def getBreakpoints(txt):
     cumulative = -1
@@ -176,7 +167,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     # instances = txtToInstance(txt)
     # entire_string = ''.join(instances)
 
-    pseudoGT_blank = np.zeros(image_shape, dtype='float16')
+    pseudoGT_blank = np.zeros(image_shape, dtype='float32')
     pseudoGT_region = pseudoGT_blank.copy()
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
@@ -199,20 +190,20 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     if not generate_affinity:
         pseudoGT_affinity = None
     
-    return pseudoGT_region, pseudoGT_affinity
+    return pseudoGT_region.astype('float32'), pseudoGT_affinity.astype('float32')
 
 def genWordGT(wordBB_i, image_shape):
-    mask = np.zeros(image_shape, dtype='float16')
+    mask = np.zeros(image_shape, dtype='float32')
     for j, wordBB in enumerate(wordBB_i):
         mask += genDistortedGauss(wordBB, img_size=image_shape)
 
-    return mask
+    return mask.astype('float32')
 
 
 # Direction GT
 def genDirectionGT(charBB_i, img_size):
-    cosf = np.zeros(img_size, dtype='float16')
-    sinf = np.zeros(img_size, dtype='float16')
+    cosf = np.zeros(img_size, dtype='float32')
+    sinf = np.zeros(img_size, dtype='float32')
     for charBB in charBB_i:
         cos_angle, sin_angle = genDirectionMap(charBB, img_size)
         cosf += cos_angle
@@ -230,8 +221,8 @@ def genDirectionMap(charBB, img_size):
     x,y = x.flatten(), y.flatten()
     points = np.vstack((x,y)).astype('int32').T
 
-    sin_field = np.zeros(img_size, dtype='float16')
-    cos_field = np.zeros(img_size, dtype='float16')
+    sin_field = np.zeros(img_size, dtype='float32')
+    cos_field = np.zeros(img_size, dtype='float32')
     # angle_field = np.zeros(img_size)
 
     p = Path(charBB)

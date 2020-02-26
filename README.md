@@ -77,7 +77,8 @@ gt.mat
     - halving the output features should be done in gpu
 - test overfitting
 - hard example mining
-- use float16
+- ~~use float16~~
+    - see https://stackoverflow.com/questions/24587433/
 
 
 ### Useful scripts:
