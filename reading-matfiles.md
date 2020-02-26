@@ -50,9 +50,13 @@ f = {
 ```
 
 where `ref(x)` is a reference (i.e. a pointer) to the variable `x`. So executing just `f["imnames"][0]` will yield a reference to the filename of the image corresponding to the first entry, i.e. `ref(imname[0])`. To dereference any pointer `p = ref(x)`, we simply do
+
 ```x = x[p] = x[ref(x)]```.
+
 Thus, to get the object representing the filename of the image corresponding to the `i`-th entry in the `.mat` file, simply do
+
 ```fname_i = f[f["imnames"][i][0]]```.
+
 This is the case for all the other variables (`charBB`, etc.)
 
 

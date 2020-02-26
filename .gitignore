@@ -1,5 +1,7 @@
 *.mat
+*.swp
 __pycache__/
+.ipynb_checkpoints/
 
 .vscode
 *.code-workspace
