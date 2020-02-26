@@ -1,4 +1,5 @@
 *.mat
+*.swp
 #*.ipynb
 __pycache__/
 
