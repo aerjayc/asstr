@@ -133,7 +133,7 @@ def genDistortedGauss(BBcoords, img_size):
     bounds = 2.5
 
     x = np.linspace(-bounds, bounds, size, dtype='float32')
-    x, y = np.meshgrid(x,x).astype('float32')
+    x, y = np.meshgrid(x,x)#.astype('float32')
     gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
 
     # plt.figure()
