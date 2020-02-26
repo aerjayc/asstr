@@ -59,4 +59,13 @@ Thus, to get the object representing the filename of the image corresponding to 
 
 This is the case for all the other variables (`charBB`, etc.)
 
+#### How to access strings
 
+To access, say, the filename of the image corresponding to the `i`-th entry, we cannot simply do `f[f["imnames"][i][0]]`, as this would yield an `HDF5 dataset` object of type `<u2`. We can convert this to a `str` object by:
+
+```
+import image_proc
+
+u2_obj = f[f["imnames"][i][0]]
+fname_i = image_proc.u2ToStr(u2_obj)
+```
