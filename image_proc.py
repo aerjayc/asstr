@@ -74,10 +74,10 @@ def getMaxSize(BBcoords):
 
     return maxWidth, maxHeight
 
-def order_points(pts):
+def order_points(pts, warn=False):
     pts = pts.astype('float32')
     sorted_y = np.argsort(pts[:,1], axis=0).T
-    
+
     top = pts[sorted_y[:2]]
     tl_i = np.argmin(top[:,0])  # find min x-value (i.e. leftmost) on top
     tl = top[tl_i]
@@ -88,8 +88,13 @@ def order_points(pts):
     bl = bottom[bl_i]
     br = bottom[1 - bl_i]
 
-    # print(f"tl = {tl}\ttr = {tr}\nbl = {bl}\tbr = {br}")
-    return np.array([tl,tr,br,bl], dtype='float32')    
+    if warn:
+        diff = pts[sorted_y[1]][1] - pts[sorted_y[2]][1]
+        if np.abs(diff) < 1:
+            #print(f"{diff}")
+            print("Warning: BB coordinates difference < 1 px:")
+            print(f"\ttl = {tl}\ttr = {tr}\n\tbl = {bl}\tbr = {br}\n")
+    return np.array([tl,tr,br,bl], dtype='float32')
 
 
 # high-level image-processing functions
@@ -133,7 +138,7 @@ def genDistortedGauss(BBcoords, img_size):
     bounds = 2.5
 
     x = np.linspace(-bounds, bounds, size, dtype='float32')
-    x, y = np.meshgrid(x,x).astype('float32')
+    x, y = np.meshgrid(x,x)#.astype('float32')
     gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
 
     # plt.figure()
@@ -159,10 +164,14 @@ def txtToInstance(txt):
     for instance in txt_i:
         instance = u2ToStr(instance)
         instances += instance.split()
-    
+
     return instances
 
 def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
+    assert charBB_i.shape[-2:] == (4,2)
+    if charBB_i.ndim == 2:  # if only one char
+        charBB_i = np.array([charBB_i], dtype='float32')
+
     breakpoints = getBreakpoints(txt)
     # instances = txtToInstance(txt)
     # entire_string = ''.join(instances)
@@ -175,7 +184,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
         region_mask = genDistortedGauss(charBB, img_size=image_shape)
         if not (region_mask is None):
             pseudoGT_region += region_mask
-        
+
         # if prev char is not a breakpoint = if curr char same instance as prev
         if ((j-1) not in breakpoints) and (j > 0) and generate_affinity:
             if region_mask is None:    # if previous char (assuming same instance) has zero size
@@ -189,11 +198,16 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
 
     if not generate_affinity:
         pseudoGT_affinity = None
-    
-    return pseudoGT_region.astype('float32'), pseudoGT_affinity.astype('float32')
+
+    return pseudoGT_region, pseudoGT_affinity
 
 def genWordGT(wordBB_i, image_shape):
+    assert wordBB_i.shape[-2:] == (4,2)
+    if wordBB_i.ndim == 2:  # if only one word
+        wordBB_i = np.array([wordBB_i], dtype='float32')
+
     mask = np.zeros(image_shape, dtype='float32')
+
     for j, wordBB in enumerate(wordBB_i):
         mask += genDistortedGauss(wordBB, img_size=image_shape)
 
@@ -202,6 +216,10 @@ def genWordGT(wordBB_i, image_shape):
 
 # Direction GT
 def genDirectionGT(charBB_i, img_size):
+    assert charBB_i.shape[-2:] == (4,2)
+    if charBB_i.ndim == 2:  # if only one char
+        charBB_i = np.array([charBB_i], dtype='float32')
+
     cosf = np.zeros(img_size, dtype='float32')
     sinf = np.zeros(img_size, dtype='float32')
     for charBB in charBB_i:
