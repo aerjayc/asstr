@@ -19,17 +19,19 @@ def u2ToStr(u2, truncate_space=False):
 def getPixelAngle(origin, pt, units='radians'):
     x,y = (pt - origin).astype('float32')
 
-    if (x == 0) and (y == 0):
-        print("warning: x=y=0")
-    #     print(f"origin = {origin}\tpt = {pt}")
-    #print(f"x,y = {x}, {y}")
-    if x == 0:
-        angle = np.pi/2
-    angle = np.arctan(y/x)
-    if x < 0: # quadrant II and III
-        angle += np.pi
-    elif y < 0:   # quadrant IV
-        angle += 2*np.pi
+    if x == 0:          # y-axis
+        if y > 0:       # positive y-axis
+            return np.pi/2
+        elif y < 0:     # negative y-axis
+            return -np.pi/2
+        else:           # origin
+            return 0
+    else:               # not on x-axis
+        angle = np.arctan(y/x)  # quadrant I
+        if x < 0:       # left half
+            angle += np.pi
+        elif y < 0:     # quadrant IV
+            angle += 2*np.pi
 
     if units != 'radians':
         angle *= 180/np.pi
@@ -214,20 +216,56 @@ def genWordGT(wordBB_i, image_shape):
     return mask.astype('float32')
 
 
-# Direction GT
-def genDirectionGT(charBB_i, img_size):
-    assert charBB_i.shape[-2:] == (4,2)
-    if charBB_i.ndim == 2:  # if only one char
-        charBB_i = np.array([charBB_i], dtype='float32')
+# Efficient Direction GT
+def genDirectionMapTemplate(temp_shape=(32,32)):
+    temp_h, temp_w = temp_shape
+    tempBB = np.array([ [0     , 0     ],
+                        [temp_w, 0     ],
+                        [temp_w, temp_h],
+                        [0     , temp_h] ], dtype="uint8")
 
-    cosf = np.zeros(img_size, dtype='float32')
-    sinf = np.zeros(img_size, dtype='float32')
-    for charBB in charBB_i:
-        cos_angle, sin_angle = genDirectionMap(charBB, img_size)
-        cosf += cos_angle
-        sinf += sin_angle
+    cos_temp, sin_temp = genDirectionMap(tempBB, (temp_w, temp_h))
+    return cos_temp, sin_temp
 
-    return cosf, sinf
+
+def genDirectionGT(BBs, img_size, template=None):
+    """~7 times faster (excluding the template generation time)
+        ``` In [85]: %timeit image_proc.genDirectionGT_efficient(BB, (10,10), template=t)
+                207 µs ± 510 ns per loop (mean ± std. dev. of 7 runs, 1000 loops each)
+
+            In [86]: %timeit image_proc.genDirectionGT(BB, (10,10))
+                1.59 ms ± 3 µs per loop (mean ± std. dev. of 7 runs, 1000 loops each)
+        ```
+    """
+    if template is None:
+        template = genDirectionMapTemplate()
+
+    if BBs.ndim == 2:    # if only one BB
+        BBs = np.array([BBs], dtype="float32")
+
+    cos_mask = np.zeros(img_size, dtype="float32")
+    sin_mask = cos_mask.copy()
+    for BB in BBs:
+        cos_mask += perspectiveTransform(template[0], final=BB, size=img_size).astype("float32")
+        sin_mask += perspectiveTransform(template[1], final=BB, size=img_size).astype("float32")
+
+    return cos_mask, sin_mask
+
+
+# # Direction GT
+# def genDirectionGT(charBB_i, img_size):
+#     assert charBB_i.shape[-2:] == (4,2)
+#     if charBB_i.ndim == 2:  # if only one char
+#         charBB_i = np.array([charBB_i], dtype='float32')
+
+#     cosf = np.zeros(img_size, dtype='float32')
+#     sinf = np.zeros(img_size, dtype='float32')
+#     for charBB in charBB_i:
+#         cos_angle, sin_angle = genDirectionMap(charBB, img_size)
+#         cosf += cos_angle
+#         sinf += sin_angle
+
+#     return cosf, sinf
 
 def genDirectionMap(charBB, img_size):
     centroid = getCentroid(charBB)
@@ -248,8 +286,8 @@ def genDirectionMap(charBB, img_size):
         if p.contains_point(pt):
             angle = getPixelAngle(centroid, pt)
             # angle_field[pt[1], pt[0]] = angle
-            cos_field[pt[1], pt[0]] = np.cos(angle)
-            sin_field[pt[1], pt[0]] = np.sin(angle)
+            cos_field[pt[1], pt[0]] = np.cos(angle).astype("float32")
+            sin_field[pt[1], pt[0]] = np.sin(angle).astype("float32")
 
     return cos_field, sin_field
 
