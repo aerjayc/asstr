@@ -228,7 +228,7 @@ def genDirectionMapTemplate(temp_shape=(32,32)):
     return cos_temp, sin_temp
 
 
-def genDirectionGT(BBs, img_size, template=None):
+def genDirectionGT(BBs, img_size, template=None, normalize=True):
     """~7 times faster (excluding the template generation time)
         ``` In [85]: %timeit image_proc.genDirectionGT_efficient(BB, (10,10), template=t)
                 207 µs ± 510 ns per loop (mean ± std. dev. of 7 runs, 1000 loops each)
@@ -248,6 +248,10 @@ def genDirectionGT(BBs, img_size, template=None):
     for BB in BBs:
         cos_mask += perspectiveTransform(template[0], final=BB, size=img_size).astype("float32")
         sin_mask += perspectiveTransform(template[1], final=BB, size=img_size).astype("float32")
+
+    if normalize:
+        cos_mask = (cos_mask + 1) / 2.
+        sin_mask = (sin_mask + 1) / 2.
 
     return cos_mask, sin_mask
 
