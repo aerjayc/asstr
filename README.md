@@ -65,9 +65,41 @@ gt.mat
 - no errors up to 10000
 
 
+## Big Picture
+
+1. ~~Char Map generation from Char BB~~ - *done*
+    - Aerjay
+2. Text Detector Training Code - *done* (needs cleaning)
+    - ~~Timothy~~ Aerjay
+3. Classifier Training Code - *ongoing*
+    - ~~Aerjay~~ Timothy
+4. Text Detector Training on Synthetic Data - *ongoing*
+    - ~~Timothy~~ Aerjay
+5. Classifier Training on Synthetic Data - *next*
+    - ~~Aerjay~~ Timothy
+6. Algorithm for Pseudo-GT Generation - *next*
+    - ~~Timothy~~ Aerjay
+7. ~~Char BB Generation from Char Maps~~ - *done*
+    - ~~Aerjay~~ Timothy
+8. Character-level Penalization Algorithm
+    - Aerjay
+9. Algorithm to deal with non-equal GT lengths
+    - Timothy
+10. Code for Text Detector Training
+    - Aerjay
+11. Classifier Training on Real-World Data
+    - Timothy
+12. Iterative Training of Detector and Classifier
+    -
+
+
 ### To do
 
+- prioritize char level loss
 - the rest of the GT maps
+    - make direction maps efficient
+        - warp pre-made direction map to charBB instead of regenerating every time
+- fix affinity maps bug
 - sigmoid
     - note: can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
 - train/~~val~~/test split (done)
