@@ -295,6 +295,54 @@ def genDirectionMap(charBB, img_size):
 
     return cos_field, sin_field
 
+def zero_pad(tensors, shape=None):
+    """ Input:
+            `tensors`:  a list of (C,H,W)-shaped tensors
+                        (variable H,W)
+        Output is shaped NCHW
+    """
+    if shape is None:
+        shapes = np.max([tensor.shape for tensor in tensors])
+        max_shape = np.max(shapes, axis=0).astype("int32")
+
+    blank = torch.zeros(max_shape)
+
+
+
+
+def collate(batch):
+    imgs = [sample[0] for sample in batch]
+    gts = [sample[1] for sample in batch]
+    # hard_imgs = [sample[0] for sample in batch]
+    # hard_gts = [sample[1] for sample in batch]
+
+    # find maximum width and height of `img` and `hard_img`
+    img_shapes = [img.shape for img in imgs]
+    max_img_shape = np.max(img_shapes, axis=0).astype("int32")
+
+    N = len(imgs)
+    C = len(imgs[0])
+    H,W = max_img_shape
+    img_batch = torch.zeros(N, C, H, W)
+    for i, img in enumerate(imgs):
+        img_h, img_w = img.shape
+        img_batch[i,:,:img_h,:img_w] = img
+
+
+    # find maximum width and height of `gt` and `hard_gt`
+    gt_shapes = [gt.shape for gt in gts]
+    max_gt_shape = np.max(gt_shapes, axis=0).astype("int32")
+
+    N_gt = len(gts)
+    C_gt = len(gts[0])
+    H_gt,W_gt = max_gt_shape
+    gt_batch = torch.zeros(N_gt, C_gt, H_gt, W_gt)
+    for i, gt in enumerate(gts):
+        gt_h, gt_w = gt.shape
+        gt_batch[i,:,:gt_h,:gt_w] = img
+
+
+
 
 if __name__ == '__main__':
     plt.figure()
