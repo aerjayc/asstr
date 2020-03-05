@@ -297,51 +297,34 @@ def genDirectionMap(charBB, img_size):
 
 def zero_pad(tensors, shape=None):
     """ Input:
-            `tensors`:  a list of (C,H,W)-shaped tensors
-                        (variable H,W)
-        Output is shaped NCHW
+            `tensors`:  a list of (C,h,w)-shaped tensors
+                        (variable h,w)
+        Output is shaped (N,C,H,W) where h,w = max(h), max(w)
     """
     if shape is None:
-        shapes = np.max([tensor.shape for tensor in tensors])
-        max_shape = np.max(shapes, axis=0).astype("int32")
+        max_shape = np.max([tensor.shape for tensor in tensors], axis=0).astype("int32").tolist()
+        batch_shape = (len(tensors),) + max_shape
 
-    blank = torch.zeros(max_shape)
+    template = torch.zeros(batch_shape)
+    for i, tensor in enumerate(tensors):
+        h,w = tensor.shape[-2:]
+        template[i,...,:h,:w] = tensor
 
+    return template
 
 
 
 def collate(batch):
     imgs = [sample[0] for sample in batch]
     gts = [sample[1] for sample in batch]
-    # hard_imgs = [sample[0] for sample in batch]
-    # hard_gts = [sample[1] for sample in batch]
+    hard_imgs = [sample[0] for sample in batch]
+    hard_gts = [sample[1] for sample in batch]
 
-    # find maximum width and height of `img` and `hard_img`
-    img_shapes = [img.shape for img in imgs]
-    max_img_shape = np.max(img_shapes, axis=0).astype("int32")
+    img_batch, gt_batch = zero_pad(imgs), zero_pad(gts)
+    hard_img_batch = zero_pad(hard_imgs)
+    hard_gt_batch = zero_pad(hard_gts)
 
-    N = len(imgs)
-    C = len(imgs[0])
-    H,W = max_img_shape
-    img_batch = torch.zeros(N, C, H, W)
-    for i, img in enumerate(imgs):
-        img_h, img_w = img.shape
-        img_batch[i,:,:img_h,:img_w] = img
-
-
-    # find maximum width and height of `gt` and `hard_gt`
-    gt_shapes = [gt.shape for gt in gts]
-    max_gt_shape = np.max(gt_shapes, axis=0).astype("int32")
-
-    N_gt = len(gts)
-    C_gt = len(gts[0])
-    H_gt,W_gt = max_gt_shape
-    gt_batch = torch.zeros(N_gt, C_gt, H_gt, W_gt)
-    for i, gt in enumerate(gts):
-        gt_h, gt_w = gt.shape
-        gt_batch[i,:,:gt_h,:gt_w] = img
-
-
+    return img_batch, gt_batch, hard_img_batch, hard_gt_batch
 
 
 if __name__ == '__main__':
