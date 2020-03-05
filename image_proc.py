@@ -4,6 +4,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.path import Path
 import cv2
+import torch
 
 # matfile-specific functions
 def u2ToStr(u2, truncate_space=False):
@@ -303,15 +304,14 @@ def zero_pad(tensors, shape=None):
     """
     if shape is None:
         max_shape = np.max([tensor.shape for tensor in tensors], axis=0).astype("int32").tolist()
-        batch_shape = (len(tensors),) + max_shape
+        batch_shape = [len(tensors),] + max_shape
 
     template = torch.zeros(batch_shape)
     for i, tensor in enumerate(tensors):
-        h,w = tensor.shape[-2:]
-        template[i,...,:h,:w] = tensor
+        i_shape = tensor.shape
+        template[i,...,:i_shape[-3],:i_shape[-2],:i_shape[-1]] = tensor
 
     return template
-
 
 
 def collate(batch):
