@@ -319,14 +319,7 @@ def centroid2minmax(centroids, shapes, yx_max):
 
     BB_min = (centroids - 0.5*shapes).astype("int32")
     BB_max = BB_min + shapes
-    # BB_max = (centroids + 0.5*shapes).astype("int32")
 
-
-    # print("------------")
-    # print(f"yx_max = {yx_max}")
-    # print(f"shapes: {shapes}")
-    # print(f"BB_min: {BB_min}\tBB_max: {BB_max}")
-    # print("------------")
 
     # remove under while preserving shape
     if np.any(BB_min < 0):
@@ -334,7 +327,6 @@ def centroid2minmax(centroids, shapes, yx_max):
 
         BB_min_copy[BB_min > 0] = 0
         BB_max -= BB_min_copy
-        # BB_min[BB_min < 0]  = 0
 
         np.clip(BB_min, 0, None, BB_min)
 
@@ -369,20 +361,19 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
 
     # generate random BBs based on word locations
     # fliplr makes the order y-x instead of x-y
+    if wordBBs.shape == (4,2):  # if single BB
+        wordBBs = wordBBs[None,...]
     word_centroids = np.mean(wordBBs, axis=1)
     # pick `N_examples` points from `centroids`
+    N_examples = min(len(wordBBs), N_examples)  # make sure that N_examples <= # BBs
     indices = random.sample(range(len(wordBBs)), N_examples)
     BB_centroids = np.fliplr(word_centroids[indices])
-
-    # randomize
-    #indices += np.random
 
     # pick semi-random width & height (only once)
     img_height, img_width = img.shape[-2:]
     scaling_factors = np.array([0.5, 0.3, 0.25, 0.2], dtype="float32")
     cropped_heights = (scaling_factors*img_height).astype("int32")
     cropped_widths = (scaling_factors*img_width).astype("int32")
-    # dimensions = (scaling_factors*(img_shape.T)).flatten().astype("int32")
 
     if constant_hw:
         N_examples = 1
@@ -391,8 +382,6 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     cropped_height = np.random.choice(cropped_heights, size=N_examples)
     cropped_width = np.random.choice(cropped_widths, size=N_examples)
     shapes = np.array([[cropped_height, cropped_width]], dtype="int32").reshape(-1,2)
-    # shapes = np.random.choice(dimensions, size=2*N_examples, replace=True).reshape(-1,2).astype("int32")
-    # print(f"shapes = {shapes}")
 
     # combine img and gts for efficiency
     imgt = np.concatenate((img, gt))
@@ -400,8 +389,8 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     cropped_imgts = constantShapeCrop(imgt, BB_centroids, shapes)
     # separate cropped_images from cropped_gts
     C = len(img)
-    cropped_images = cropped_imgts[:, :C, :, :]
-    cropped_gts = cropped_imgts[:, C:, :, :]
+    cropped_images = cropped_imgts[:, :C, :, :] # NCHW
+    cropped_gts = cropped_imgts[:, C:, :, :]    # NCHW
 
     return cropped_images, cropped_gts
 
@@ -418,18 +407,15 @@ def constantShapeCrop(img, centroids, shapes):
                 - `H, W`: shape of the resulting BB (given by `shape`)
     """
     yx_mins, yx_maxs = centroid2minmax(centroids, shapes, img.shape[-2:])
-    # print(yx_maxs - yx_mins)
 
     batch = None
     for (y_min, x_min), (y_max, x_max) in zip(yx_mins, yx_maxs):
-        # print(f"y_min = {y_min}\ty_max = {y_max}\nx_min = {x_min}\tx_max = {x_max}")
         cropped = img[None, ..., y_min:y_max, x_min:x_max]
 
         if batch is None:
             batch = cropped
             continue
 
-        # print(f"batch.shape = {batch.shape}\ncropped.shape = {cropped.shape}")
         batch = np.concatenate((batch, cropped))
 
     return batch
