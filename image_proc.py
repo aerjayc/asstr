@@ -318,8 +318,8 @@ def zero_pad(tensors, shape=None):
 def collate(batch):
     imgs = [sample[0] for sample in batch]
     gts = [sample[1] for sample in batch]
-    hard_imgs = [sample[0] for sample in batch]
-    hard_gts = [sample[1] for sample in batch]
+    hard_imgs = [sample[2] for sample in batch]
+    hard_gts = [sample[3] for sample in batch]
 
     img_batch, gt_batch = zero_pad(imgs), zero_pad(gts)
     hard_img_batch = zero_pad(hard_imgs)
