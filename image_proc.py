@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
@@ -325,6 +326,130 @@ def collate(batch):
     hard_gt_batch = zero_pad(hard_gts)
 
     return img_batch, gt_batch, hard_img_batch, hard_gt_batch
+
+
+def centroid2xy(centroids, shapes):
+    assert shapes.shape[-1:] == (2,), f"shapes.shape = {shapes.shape}"
+    if shapes.shape == (2,):
+        shapes = np.array([shapes], dtype="int32")
+
+    perp_offsets = (shapes/2).astype("int32")
+
+    brs, tls = centroids + perp_offsets, centroids - perp_offsets
+    bls, trs = np.stack((brs, tls), axis=0).transpose(2,1,0)
+
+    return np.stack((tl,tr,br,bl), axis=0).transpose(1,0,2)
+
+def centroid2minmax(centroids, shapes, yx_max):
+    assert shapes.shape[-1:] == (2,), f"shapes.shape = {shapes.shape}"
+    if shapes.shape == (2,):
+        shapes = np.array([shapes], dtype="int32")
+
+    centroids = centroids.astype("int32")
+    shapes = shapes.astype("int32")
+
+    BB_min = (centroids - 0.5*shapes).astype("int32")
+    BB_max = BB_min + shapes
+
+
+    # remove under while preserving shape
+    if np.any(BB_min < 0):
+        BB_min_copy = BB_min.copy()
+
+        BB_min_copy[BB_min > 0] = 0
+        BB_max -= BB_min_copy
+
+        np.clip(BB_min, 0, None, BB_min)
+
+    if np.any(BB_max > yx_max):
+        BB_max_copy = BB_max.copy()
+        BB_max_copy -= yx_max
+        BB_max_copy[BB_max_copy < 0] = 0
+        BB_min -= BB_max_copy
+
+        np.clip(BB_max, None, yx_max, BB_max)
+
+    return np.array([BB_min, BB_max], dtype="int32")
+
+
+def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
+    """ Inputs:
+            - `img`: numpy array shaped `(C, H, W)`
+            - `gt`: must have the same width and height as `img`
+                    i.e. a numpy array shaped (..., H, W)
+            - `wordBBs`: numpy array shaped `(N_words, H, W)`
+                         Note: `wordBBs` *has x-y order!*
+            - `N_examples`: A positive integer (default: `4`)
+                            The number of crops to be done (batch_size)
+            - `constant_hw`:
+        randomly generate BB region to crop
+            parameters:
+            - size/shape,
+            - number of characters inside,
+            - number of crops to do (minimize intersection)
+            - random scaling
+    """
+
+    # generate random BBs based on word locations
+    # fliplr makes the order y-x instead of x-y
+    if wordBBs.shape == (4,2):  # if single BB
+        wordBBs = wordBBs[None,...]
+    word_centroids = np.mean(wordBBs, axis=1)
+    # pick `N_examples` points from `centroids`
+    N_examples = min(len(wordBBs), N_examples)  # make sure that N_examples <= # BBs
+    indices = random.sample(range(len(wordBBs)), N_examples)
+    BB_centroids = np.fliplr(word_centroids[indices])
+
+    # pick semi-random width & height (only once)
+    img_height, img_width = img.shape[-2:]
+    scaling_factors = np.array([0.5, 0.3, 0.25, 0.2], dtype="float32")
+    cropped_heights = (scaling_factors*img_height).astype("int32")
+    cropped_widths = (scaling_factors*img_width).astype("int32")
+
+    if constant_hw:
+        N_examples = 1
+
+    # generate `2*N_examples` integers (from `dimensions`) to get `N_examples` heights and widths
+    cropped_height = np.random.choice(cropped_heights, size=N_examples)
+    cropped_width = np.random.choice(cropped_widths, size=N_examples)
+    shapes = np.array([[cropped_height, cropped_width]], dtype="int32").reshape(-1,2)
+
+    # combine img and gts for efficiency
+    imgt = np.concatenate((img, gt))
+    # crop
+    cropped_imgts = constantShapeCrop(imgt, BB_centroids, shapes)
+    # separate cropped_images from cropped_gts
+    C = len(img)
+    cropped_images = cropped_imgts[:, :C, :, :] # NCHW
+    cropped_gts = cropped_imgts[:, C:, :, :]    # NCHW
+
+    return cropped_images, cropped_gts
+
+
+def constantShapeCrop(img, centroids, shapes):
+    """ Inputs:
+            - `img`: numpy tensor with shape (C, H, W)
+            - `yx_mins`: yx coordinates of top left corner of BB
+            - `shape`: (height, width) of the BB
+
+        Outputs:
+            - `(N, H, W)`-shaped numpy tensor where
+                - `N`: number of BBs cropped (given by `len(yx_mins)`)
+                - `H, W`: shape of the resulting BB (given by `shape`)
+    """
+    yx_mins, yx_maxs = centroid2minmax(centroids, shapes, img.shape[-2:])
+
+    batch = None
+    for (y_min, x_min), (y_max, x_max) in zip(yx_mins, yx_maxs):
+        cropped = img[None, ..., y_min:y_max, x_min:x_max]
+
+        if batch is None:
+            batch = cropped
+            continue
+
+        batch = np.concatenate((batch, cropped))
+
+    return batch
 
 
 if __name__ == '__main__':
