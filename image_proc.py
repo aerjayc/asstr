@@ -297,7 +297,7 @@ def genDirectionMap(charBB, img_size):
 
     return cos_field, sin_field
 
-def zero_pad(tensors, shape=None):
+def zero_pad(tensors, shape=None, cuda=True):
     """ Input:
             `tensors`:  a list of (C,h,w)-shaped tensors
                         (variable h,w)
@@ -305,12 +305,26 @@ def zero_pad(tensors, shape=None):
     """
     if shape is None:
         max_shape = np.max([tensor.shape for tensor in tensors], axis=0).astype("int32").tolist()
-        batch_shape = [len(tensors),] + max_shape
+        if len(max_shape) == 4: # if batched already (e.g. NCHW)
+            N = sum([len(tensor) for tensor in tensors])
+            batch_shape = [N,] + max_shape[-3:]
+        else:
+            N = len(tensors)
+            batch_shape = [N,] + max_shape
 
     template = torch.zeros(batch_shape)
-    for i, tensor in enumerate(tensors):
-        i_shape = tensor.shape
-        template[i,...,:i_shape[-3],:i_shape[-2],:i_shape[-1]] = tensor
+    i = 0
+    for tensor in tensors:
+        s = tensor.shape
+        if len(s) == 4:
+            i_end = i + s[0]
+        else:
+            i_end = i + 1
+        template[i:i_end, :s[-3], :s[-2], :s[-1]] = tensor
+
+        i = i_end
+
+    if cuda: template = template.cuda()
 
     return template
 
