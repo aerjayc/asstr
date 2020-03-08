@@ -124,30 +124,34 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
     initial = order_points(initial)
     final = order_points(final)
 
-    M = cv2.getPerspectiveTransform(initial.astype('float32'), final.astype('float32'))
+    assert (w > 0) and (h > 0), f"perspectiveTransform error: w = {w}, h = {h}"
+
+    M = cv2.getPerspectiveTransform(initial, final)
     warped = cv2.warpPerspective(image, M, (w, h))
 
     return warped.astype('float32')
 
-def genDistortedGauss(BBcoords, img_size):
+def genDistortedGauss(BBcoords, img_size, template=None):
+    """ Using a pre-made template increases efficiency.
+        From `~210 us` to `~90 us` (execution duration, timed using `%timeit`)
+    """
     size = max(getMaxSize(BBcoords))
     if not size:
         return None
 
-    x_mean = 0
-    y_mean = 0
-    variance = 1
-    height = np.sqrt(2*np.pi*variance)
+    if template is None:
+        x_mean = 0
+        y_mean = 0
+        variance = 1
+        height = np.sqrt(2*np.pi*variance)
 
-    bounds = 2.5
+        bounds = 2.5
 
-    x = np.linspace(-bounds, bounds, size, dtype='float32')
-    x, y = np.meshgrid(x,x)#.astype('float32')
-    gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
-
-    # plt.figure()
-    # plt.imshow(gauss, interpolation='nearest')
-    # plt.colorbar()
+        x = np.linspace(-bounds, bounds, size, dtype='float32')
+        x, y = np.meshgrid(x,x)#.astype('float32')
+        gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
+    else:
+        gauss = template
 
     distorted_gauss = perspectiveTransform(gauss, final=BBcoords, size=img_size)
 
