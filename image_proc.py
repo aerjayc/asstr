@@ -124,7 +124,9 @@ def perspectiveTransform(image, initial=None, final=None, size=None):
     initial = order_points(initial)
     final = order_points(final)
 
-    M = cv2.getPerspectiveTransform(initial.astype('float32'), final.astype('float32'))
+    assert (w > 0) and (h > 0), f"perspectiveTransform error: w = {w}, h = {h}"
+
+    M = cv2.getPerspectiveTransform(initial, final)
     warped = cv2.warpPerspective(image, M, (w, h))
 
     return warped.astype('float32')
