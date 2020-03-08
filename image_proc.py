@@ -135,11 +135,11 @@ def genDistortedGauss(BBcoords, img_size, template=None):
     """ Using a pre-made template increases efficiency.
         From `~210 us` to `~90 us` (execution duration, timed using `%timeit`)
     """
-    size = max(getMaxSize(BBcoords))
-    if not size:
-        return None
-
     if template is None:
+        size = max(getMaxSize(BBcoords))
+        if not size:
+            return None
+
         x_mean = 0
         y_mean = 0
         variance = 1
@@ -156,6 +156,15 @@ def genDistortedGauss(BBcoords, img_size, template=None):
     distorted_gauss = perspectiveTransform(gauss, final=BBcoords, size=img_size)
 
     return distorted_gauss.astype('float32')
+
+def genGaussianTemplate(size=None):
+    if size is None:
+        size = (32,32)
+    h,w = size
+
+    BB = np.array([[0,0],[w,0],[w,h],[0,h]])
+
+    return genDistortedGauss(BB, size)
 
 def getBreakpoints(txt):
     cumulative = -1
@@ -175,7 +184,7 @@ def txtToInstance(txt):
 
     return instances
 
-def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
+def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=None):
     assert charBB_i.shape[-2:] == (4,2)
     if charBB_i.ndim == 2:  # if only one char
         charBB_i = np.array([charBB_i], dtype='float32')
@@ -189,7 +198,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
     for j, charBB in enumerate(charBB_i):
-        region_mask = genDistortedGauss(charBB, img_size=image_shape)
+        region_mask = genDistortedGauss(charBB, img_size=image_shape, template=template)
         if not (region_mask is None):
             pseudoGT_region += region_mask
 
@@ -199,7 +208,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
                 continue
 
             affinityBB = order_points(getAffinityBB(charBB_prev, charBB))
-            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape)
+            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape, template=template)
             if not (affinity_mask is None):
                 pseudoGT_affinity += affinity_mask
         charBB_prev = charBB
@@ -209,7 +218,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
 
     return pseudoGT_region, pseudoGT_affinity
 
-def genWordGT(wordBB_i, image_shape):
+def genWordGT(wordBB_i, image_shape, template=None):
     assert wordBB_i.shape[-2:] == (4,2)
     if wordBB_i.ndim == 2:  # if only one word
         wordBB_i = np.array([wordBB_i], dtype='float32')
@@ -217,7 +226,7 @@ def genWordGT(wordBB_i, image_shape):
     mask = np.zeros(image_shape, dtype='float32')
 
     for j, wordBB in enumerate(wordBB_i):
-        mask += genDistortedGauss(wordBB, img_size=image_shape)
+        mask += genDistortedGauss(wordBB, img_size=image_shape, template=template)
 
     return mask.astype('float32')
 
