@@ -28,7 +28,7 @@ class double_conv(nn.Module):
 
 
 class CRAFT(nn.Module):
-    def __init__(self, pretrained=False, freeze=False, num_class=2):
+    def __init__(self, pretrained=False, freeze=False, num_class=2, idx_tanh=None):
         super(CRAFT, self).__init__()
 
         """ Base network """
@@ -47,7 +47,7 @@ class CRAFT(nn.Module):
             nn.Conv2d(32, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True),
             nn.Conv2d(16, 16, kernel_size=1), nn.ReLU(inplace=True),
             nn.Conv2d(16, num_class, kernel_size=1),
-            nn.Sigmoid()    # assuming gt is between 0 and 1
+            # nn.Sigmoid()    # assuming gt is between 0 and 1
         )
 
         init_weights(self.upconv1.modules())
@@ -55,6 +55,8 @@ class CRAFT(nn.Module):
         init_weights(self.upconv3.modules())
         init_weights(self.upconv4.modules())
         init_weights(self.conv_cls.modules())
+
+        self.idx_tanh = idx_tanh
 
     def forward(self, x):
         """ Base network """
@@ -78,6 +80,16 @@ class CRAFT(nn.Module):
 
         y = self.conv_cls(feature)
 
+        N,C,H,W = y.shape
+        idx_tanh = self.idx_tanh
+        if idx_tanh is None:
+            y = F.sigmoid(y)
+        if not (idx_tanh is None):
+            idx_sigmoid = list(set(range(C)) - set(idx_tanh))
+            y[:,idx_tanh,:,:] = F.tanh(y[:,idx_tanh,:,:])
+            y[:,idx_sigmoid,:,:] = F.sigmoid(y[:,idx_sigmoid,:,:])
+
+        # y.shape: N,C,H,W -> N,H,W,C
         return y.permute(0,2,3,1), feature
 
 if __name__ == '__main__':
