@@ -4,15 +4,16 @@ import os
 import cv2
 
 import torch
-from torch.utils.data import Dataset, Dataloader
+from torch.utils.data import Dataset, DataLoader
+from craft.craft import CRAFT
 
 import image_proc
 
 from matplotlib import pyplot as plt
 
-class ICDAR2015(Dataset):
+class ICDAR2015Dataset(Dataset):
     def __init__(self, img_dir, gt_dir, color_flag=1):
-        super(ICDAR2015).__init__()
+        super(ICDAR2015Dataset).__init__()
 
         # paths
         self.img_dir = img_dir
@@ -38,25 +39,30 @@ class ICDAR2015(Dataset):
 
         headers = ['x1','y1','x2','y2','x3','y3','x4','y4','transcription']
         gt_df  = pandas.read_csv(gt_path, names=headers)
-        wordBBs = gt_df['x1','y1','x2','y2','x3','y3','x4','y4'].to_numpy().reshape(-1,4,2)
+        wordBBs = gt_df[['x1','y1','x2','y2','x3','y3','x4','y4']].to_numpy().reshape(-1,4,2)
         texts = gt_df['transcription']
 
         return img, wordBBs, texts
 
 
 
-class PseudoGTDataset(self):
-    def __init__(self):
-        pass
+class PseudoGTDataset(ICDAR2015Dataset):
+    def __init__(self, img_dir, gt_dir, weights_path=None, color_flag=1,
+                 character_map=True, affinity_map=False, word_map=True,
+                 direction_map=True):
+        # super(ICDAR2015Dataset).__init__()
+        self.raw_dataset = ICDAR2015Dataset(img_dir, gt_dir, color_flag=color_flag)
+
+        self.num_class = character_map + affinity_map + word_map + 2*direction_map
+        model = CRAFT(pretrained=False, num_class=self.num_class).cuda()
+        if weights_path:
+            model.load_state_dict(torch.load(weights_path))
+            model.eval()
+        self.model = model
+
 
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        # if changing starting index
-        idx += self.begin
-
-        f = self.f
+        img, wordBBs, texts = self.raw_dataset[idx]
 
         # get image
         # for each wordBB, crop to c_i
@@ -64,15 +70,38 @@ class PseudoGTDataset(self):
         # return inferred to a blank gt template
         # return img, gt
 
+        model = self.model
+
+        C,H,W = img.shape
+        gt = np.zeros((int(H/2.),int(W/2.),self.num_class), dtype="float32")
+        for wordBB in wordBBs:
+            y_min, x_min = np.min(wordBB, axis=0)
+            y_max, x_max = np.max(wordBB, axis=0)
+            wordBB_img = img[:,y_min:y_max, x_min:x_max]
+
+            # wordBB_gt,_ = model(wordBB_img)
+
+            # y_min, x_min = int(y_min/2.), int(x_min/2.)
+            # y_max = y_min + wordBB_gt.shape[0]
+            # x_max = x_min + wordBB_gt.shape[1]
+            # gt[y_min:y_max,x_min:x_max,:] = wordBB_gt
+
+        return img, gt, wordBBs, texts
+
+
+
 if __name__ == '__main__':
-    base_dir = "C:/Users/Aerjay/Downloads/datasets/icdar-2015/"
-    img_dir = os.path.join(base_dir, "4.1 Localization/ch4_training_images")
-    img_dir = os.path.join(base_dir, "4.1 Localization/ch4_training_localization_transcription_gt")
-    dataset = ICDAR2015(img_dir, gt_dir)
+    base_dir = "/media/aerjay/Acer/Users/Aerjay/Downloads/datasets/icdar-2015"
+    img_dir = os.path.join(base_dir, "4.1 - Text Localization/ch4_training_images")
+    gt_dir = os.path.join(base_dir, "4.1 - Text Localization/ch4_training_localization_transcription_gt")
+    # dataset = ICDAR2015Dataset(img_dir, gt_dir)
+    dataset = PseudoGTDataset(img_dir, gt_dir)
 
-    img, wordBBs, texts = dataset[0]
-    print(f"img.shape = {img.shape}")
+    print(dataset[0])
 
-    plt.figure()
-    plt.imshow(img)
-    plt.show()
+    # img, wordBBs, texts = dataset[0]
+    # print(f"img.shape = {img.shape}")
+
+    # plt.figure()
+    # plt.imshow(img)
+    # plt.show()
