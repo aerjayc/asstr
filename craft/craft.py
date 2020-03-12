@@ -84,7 +84,7 @@ class CRAFT(nn.Module):
         idx_tanh = self.idx_tanh
         if idx_tanh is None:
             y = F.sigmoid(y)
-        if not (idx_tanh is None):
+        else:
             idx_sigmoid = list(set(range(C)) - set(idx_tanh))
             y[:,idx_tanh,:,:] = F.tanh(y[:,idx_tanh,:,:])
             y[:,idx_sigmoid,:,:] = F.sigmoid(y[:,idx_sigmoid,:,:])
