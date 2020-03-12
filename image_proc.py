@@ -264,9 +264,11 @@ def genDirectionGT(BBs, img_size, template=None, normalize=True):
         cos_mask += perspectiveTransform(template[0], final=BB, size=img_size).astype("float32")
         sin_mask += perspectiveTransform(template[1], final=BB, size=img_size).astype("float32")
 
+    np.clip(cos_mask, -1, 1, inplace=True)
+    np.clip(sin_mask, -1, 1, inplace=True)
     if normalize:
-        cos_mask = (cos_mask + 1) / 2.
-        sin_mask = (sin_mask + 1) / 2.
+        cos_mask = (cos_mask + 1) / 2
+        sin_mask = (sin_mask + 1) / 2
 
     return cos_mask, sin_mask
 
