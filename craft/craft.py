@@ -83,11 +83,12 @@ class CRAFT(nn.Module):
         N,C,H,W = y.shape
         idx_tanh = self.idx_tanh
         if idx_tanh is None:
-            y = F.sigmoid(y)
+            y = torch.sigmoid(y)
         else:
+            idx_tanh = [idx % C for idx in idx_tanh]
             idx_sigmoid = list(set(range(C)) - set(idx_tanh))
-            y[:,idx_tanh,:,:] = F.tanh(y[:,idx_tanh,:,:])
-            y[:,idx_sigmoid,:,:] = F.sigmoid(y[:,idx_sigmoid,:,:])
+            y[:,idx_tanh,:,:] = torch.tanh(y[:,idx_tanh,:,:])
+            y[:,idx_sigmoid,:,:] = torch.sigmoid(y[:,idx_sigmoid,:,:])
 
         # y.shape: N,C,H,W -> N,H,W,C
         return y.permute(0,2,3,1), feature
