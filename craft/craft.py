@@ -84,7 +84,8 @@ class CRAFT(nn.Module):
         idx_tanh = self.idx_tanh
         if idx_tanh is None:
             y = torch.sigmoid(y)
-        if not (idx_tanh is None):
+        else:
+            idx_tanh = [idx % C for idx in idx_tanh]
             idx_sigmoid = list(set(range(C)) - set(idx_tanh))
             y[:,idx_tanh,:,:] = torch.tanh(y[:,idx_tanh,:,:])
             y[:,idx_sigmoid,:,:] = torch.sigmoid(y[:,idx_sigmoid,:,:])
