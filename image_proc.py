@@ -243,7 +243,7 @@ def genDirectionMapTemplate(temp_shape=(32,32)):
     return cos_temp, sin_temp
 
 
-def genDirectionGT(BBs, img_size, template=None, normalize=True):
+def genDirectionGT(BBs, img_size, template=None, normalize=False):
     """~7 times faster (excluding the template generation time)
         ``` In [85]: %timeit image_proc.genDirectionGT_efficient(BB, (10,10), template=t)
                 207 µs ± 510 ns per loop (mean ± std. dev. of 7 runs, 1000 loops each)
