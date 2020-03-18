@@ -25,7 +25,7 @@ class SynthCharMapDataset(Dataset):
 
     def __init__(self, gt_path, img_dir, begin=0, cuda=True, color_flag=1,
                  hard_examples=False, affinity_map=False, #transform=None,
-                 character_map=True, word_map=True, direction_map=True):
+                 character_map=True, word_map=False, direction_map=True):
         """
         Args:
             gt_path (string): Path to gt.mat file (GT file)
@@ -49,6 +49,10 @@ class SynthCharMapDataset(Dataset):
         self.affinity_map = affinity_map
         self.word_map = word_map
         self.direction_map = direction_map
+
+        # templates
+        if self.character_map:
+            self.gaussian_template = image_proc.genGaussianTemplate()
         if self.direction_map:
             self.direction_template = image_proc.genDirectionMapTemplate()
 
@@ -90,19 +94,21 @@ class SynthCharMapDataset(Dataset):
 
         # get the heatmap GTs
         char_map, aff_map = image_proc.genPseudoGT(charBBs, txts, image_shape,
-                                            generate_affinity=self.affinity_map)
+                                            generate_affinity=self.affinity_map,
+                                            template=self.gaussian_template)
         if self.word_map:
-            word_map = image_proc.genWordGT(wordBBs, image_shape)
+            word_map = image_proc.genWordGT(wordBBs, image_shape,
+                                            template=self.gaussian_template)
         if self.direction_map:
             cos_map, sin_map  = image_proc.genDirectionGT(charBBs, image_shape,
-                            normalize=True, template=self.direction_template)
+                                            template=self.direction_template)
 
         # combine gts into a single tensor
         gt = None
         if self.character_map:
             gt = char_map[None,...]
         if self.affinity_map:
-            affinity_map = affinity_map[None,...]
+            affinity_map = aff_map[None,...]
             if gt is None:
                 gt = affinity_map
             else:
@@ -140,9 +146,38 @@ class SynthCharMapDataset(Dataset):
         gt = torch.from_numpy(gt[None,...]).type(self.dtype)
         gt_resized = F.interpolate(gt, scale_factor=0.5)[0].permute(1,2,0) # HWC
 
+        # CHW
+        synthetic_image = torch.from_numpy(synthetic_image).type(self.dtype)
         synthetic_image = synthetic_image / 255.0
 
         return synthetic_image, gt_resized, hard_img, hard_gt_resized
+
+def show_samples(imgs, i=None, feature_type="img", title=None, channel=None):
+    imgs = imgs.detach().cpu().numpy()
+    if i == None:
+        img = imgs
+    else:
+        img = imgs[i]
+
+    if feature_type == "img":
+        img = img.transpose(1,2,0)
+    elif feature_type == "gt":
+        pass
+    else:
+        print(f"Warning: feature_type should be 'img' or 'gt', not " +
+              f" '{feature_type}'. Assuming 'gt'.")
+
+    if channel != None:
+        img = img[:,:,channel]
+
+    if title is None:
+        title = f"img[{i}]"
+
+    plt.figure(figsize=(10,10))
+    plt.title(title)
+    plt.imshow(img, interpolation='nearest')
+
+    plt.show()
 
 
 def print_statistics(running_loss, loss, i, epoch,
