@@ -149,7 +149,8 @@ def genDistortedGauss(BBcoords, img_size, template=None):
 
         x = np.linspace(-bounds, bounds, size, dtype='float32')
         x, y = np.meshgrid(x,x)#.astype('float32')
-        gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
+        gauss = height * (1/np.sqrt(2*np.pi*variance)) *\
+                np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
     else:
         gauss = template
 
@@ -198,17 +199,19 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=Non
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
     for j, charBB in enumerate(charBB_i):
-        region_mask = genDistortedGauss(charBB, img_size=image_shape, template=template)
+        region_mask = genDistortedGauss(charBB, img_size=image_shape,
+                                        template=template)
         if not (region_mask is None):
             pseudoGT_region += region_mask
 
         # if prev char is not a breakpoint = if curr char same instance as prev
         if ((j-1) not in breakpoints) and (j > 0) and generate_affinity:
-            if region_mask is None:    # if previous char (assuming same instance) has zero size
-                continue
+            if region_mask is None:         # if previous char (assuming same
+                continue                    # instance) has zero size
 
             affinityBB = order_points(getAffinityBB(charBB_prev, charBB))
-            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape, template=template)
+            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape,
+                                              template=template)
             if not (affinity_mask is None):
                 pseudoGT_affinity += affinity_mask
         charBB_prev = charBB
@@ -226,7 +229,8 @@ def genWordGT(wordBB_i, image_shape, template=None):
     mask = np.zeros(image_shape, dtype='float32')
 
     for j, wordBB in enumerate(wordBB_i):
-        mask += genDistortedGauss(wordBB, img_size=image_shape, template=template)
+        mask += genDistortedGauss(wordBB, img_size=image_shape,
+                                  template=template)
 
     return mask.astype('float32')
 
@@ -261,8 +265,8 @@ def genDirectionGT(BBs, img_size, template=None, normalize=False):
     cos_mask = np.zeros(img_size, dtype="float32")
     sin_mask = cos_mask.copy()
     for BB in BBs:
-        cos_mask += perspectiveTransform(template[0], final=BB, size=img_size).astype("float32")
-        sin_mask += perspectiveTransform(template[1], final=BB, size=img_size).astype("float32")
+        cos_mask += perspectiveTransform(template[0], final=BB, size=img_size)
+        sin_mask += perspectiveTransform(template[1], final=BB, size=img_size)
 
     np.clip(cos_mask, -1, 1, inplace=True)
     np.clip(sin_mask, -1, 1, inplace=True)
@@ -293,7 +297,7 @@ def genDirectionMap(charBB, img_size):
     x_min, y_min = np.min(charBB, axis=0)
     x_max, y_max = np.max(charBB, axis=0)
 
-    # https://stackoverflow.com/questions/21339448/how-to-get-list-of-points-inside-a-polygon-in-python
+    # https://stackoverflow.com/questions/21339448
     x,y = np.meshgrid(np.arange(x_min,x_max), np.arange(y_min,y_max))
     x,y = x.flatten(), y.flatten()
     points = np.vstack((x,y)).astype('int32').T
@@ -319,7 +323,8 @@ def zero_pad(tensors, shape=None, cuda=True):
         Output is shaped (N,C,H,W) where h,w = max(h), max(w)
     """
     if shape is None:
-        max_shape = np.max([tensor.shape for tensor in tensors], axis=0).astype("int32").tolist()
+        max_shape = np.max([tensor.shape for tensor in tensors], axis=0)\
+                        .astype("int32").tolist()
         if len(max_shape) == 4: # if batched already (e.g. NCHW)
             N = sum([len(tensor) for tensor in tensors])
             batch_shape = [N,] + max_shape[-3:]
@@ -438,10 +443,11 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     if constant_hw:
         N_examples = 1
 
-    # generate `2*N_examples` integers (from `dimensions`) to get `N_examples` heights and widths
+    # generate `2*N_examples` ints (from `dimensions`) to get `N_examples` h,w
     cropped_height = np.random.choice(cropped_heights, size=N_examples)
     cropped_width = np.random.choice(cropped_widths, size=N_examples)
-    shapes = np.array([[cropped_height, cropped_width]], dtype="int32").reshape(-1,2)
+    shapes = np.array([[cropped_height, cropped_width]], dtype="int32")\
+                .reshape(-1,2)
 
     # combine img and gts for efficiency
     imgt = np.concatenate((img, gt))
