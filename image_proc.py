@@ -505,13 +505,13 @@ def augment(img, gt, size=(768,768), scale=(0.08, 1.0), ratio=(3./4, 4./3),
     i,j,h,w = transforms.RandomResizedCrop.get_params(img, scale, ratio)
     angle = transforms.RandomRotation.get_params(degrees)
 
-    # convert to torch Tensor and crop
-    img = crop(img, i,j,h,w)    # HWC
-    gt  = crop(gt, i,j,h,w, axes=gt_hw_axes)   # CHW
-
     # rotate
     img = scipy.ndimage.rotate(img, angle, reshape=False)
     gt  = scipy.ndimage.rotate(gt, angle, axes=gt_hw_axes, reshape=False)
+
+    # convert to torch Tensor and crop
+    img = crop(img, i,j,h,w)    # HWC
+    gt  = crop(gt, i,j,h,w, axes=gt_hw_axes)   # CHW
 
     # resize
     img = cv2.resize(img, dsize=size)
