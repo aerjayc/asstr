@@ -145,7 +145,7 @@ class SynthCharMapDataset(Dataset):
         # transforms
         image, gt = image_proc.augment(image, gt, size=self.size, halve_gt=False)
         image = image.type(self.dtype) / 255.0 # CHW
-        gt = gt.type(self.dtype)    # also resized
+        gt = gt.permute(1,2,0).type(self.dtype)    # resized, HWC
 
         return image, gt, hard_img, hard_gt
 
