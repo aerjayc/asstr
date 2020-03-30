@@ -411,7 +411,7 @@ def centroid2minmax(centroids, shapes, yx_max):
 
 def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     """ Inputs:
-            - `img`: numpy array shaped `(C, H, W)`
+            - `img`: PIL Image
             - `gt`: must have the same width and height as `img`
                     i.e. a numpy array shaped (..., H, W)
             - `wordBBs`: numpy array shaped `(N_words, H, W)`
@@ -438,7 +438,7 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     BB_centroids = np.fliplr(word_centroids[indices])
 
     # pick semi-random width & height (only once)
-    img_height, img_width = img.shape[-2:]
+    img_height, img_width = img.height, img.width
     scaling_factors = np.array([0.5, 0.3, 0.25, 0.2], dtype="float32")
     cropped_heights = (scaling_factors*img_height).astype("int32")
     cropped_widths = (scaling_factors*img_width).astype("int32")
@@ -453,7 +453,7 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
                 .reshape(-1,2)
 
     # combine img and gts for efficiency
-    imgt = np.concatenate((img, gt))
+    imgt = np.concatenate((np.array(img).transpose(2,0,1), gt))
     # crop
     cropped_imgts = constantShapeCrop(imgt, BB_centroids, shapes)
     # separate cropped_images from cropped_gts
