@@ -1,11 +1,11 @@
 import numpy as np
 import cv2
+import PIL
 import h5py
 import os.path
 from pathlib import Path
 
 import image_proc
-import gt_io
 
 import torch
 import torchvision
@@ -23,8 +23,8 @@ import time
 class SynthCharMapDataset(Dataset):
     """SynthText Dataset + Heatmap + Direction Ground Truths"""
 
-    def __init__(self, gt_path, img_dir, begin=0, cuda=True, color_flag=1,
-                 hard_examples=False, affinity_map=False, #transform=None,
+    def __init__(self, gt_path, img_dir, begin=0, cuda=True, size=(768,768),
+                 color_flag=1, hard_examples=False, affinity_map=False,
                  character_map=True, word_map=False, direction_map=True):
         """
         Args:
@@ -69,6 +69,8 @@ class SynthCharMapDataset(Dataset):
         else:
             self.dtype = torch.FloatTensor
 
+        self.size = size
+
     def __len__(self):
         return self.length
 
@@ -89,8 +91,8 @@ class SynthCharMapDataset(Dataset):
         # extract the idx-th image
         imgpath = os.path.join(self.img_dir, imgname)
         # read img, convert from HWC to CHW
-        synthetic_image = cv2.imread(imgpath, self.color_flag).transpose(2,0,1)
-        image_shape = synthetic_image.shape[-2:]
+        image = PIL.Image.open(imgpath)
+        image_shape = image.height, image.width
 
         # get the heatmap GTs
         char_map, aff_map = image_proc.genPseudoGT(charBBs, txts, image_shape,
@@ -128,29 +130,24 @@ class SynthCharMapDataset(Dataset):
 
         # get hard examples + corresponding gts
         if self.hard_examples:
-            hard_img, hard_gt = image_proc.hard_example_mining(synthetic_image,
+            hard_img, hard_gt = image_proc.hard_example_mining(image,
                                                                gt, wordBBs)
             # hard_img: NCHW
             # hard_gt: NCHW -> NHWC
 
             hard_gt = torch.from_numpy(hard_gt).type(self.dtype)
-            hard_gt_resized = F.interpolate(hard_gt, scale_factor=0.5)\
+            hard_gt = F.interpolate(hard_gt, scale_factor=0.5)\
                               .permute(0,2,3,1)
             hard_img = torch.from_numpy(hard_img).type(self.dtype) / 255.0
         else:
-            hard_img, hard_gt, hard_gt_resized = None, None, None
+            hard_img, hard_gt = None, None
 
+        # transforms
+        image, gt = image_proc.augment(image, gt, size=self.size, halve_gt=False)
+        image = image.type(self.dtype) / 255.0 # CHW
+        gt = gt.type(self.dtype)    # also resized
 
-        # resize to match feature map size
-        # to match expectations of F.interpolate, we reshape to NCHW
-        gt = torch.from_numpy(gt[None,...]).type(self.dtype)
-        gt_resized = F.interpolate(gt, scale_factor=0.5)[0].permute(1,2,0) # HWC
-
-        # CHW
-        synthetic_image = torch.from_numpy(synthetic_image).type(self.dtype)
-        synthetic_image = synthetic_image / 255.0
-
-        return synthetic_image, gt_resized, hard_img, hard_gt_resized
+        return image, gt, hard_img, hard_gt
 
 def show_samples(imgs, i=None, feature_type="img", title=None, channel=None):
     imgs = imgs.detach().cpu().numpy()

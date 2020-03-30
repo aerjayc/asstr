@@ -6,6 +6,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.path import Path
 import cv2
 import torch
+import PIL
+from torchvision import transforms
+import scipy.ndimage
 
 # matfile-specific functions
 def u2ToStr(u2, truncate_space=False):
@@ -485,6 +488,72 @@ def constantShapeCrop(img, centroids, shapes):
         batch = np.concatenate((batch, cropped))
 
     return batch
+
+def augment(img, gt, size=(768,768), scale=(0.08, 1.0), ratio=(3./4, 4./3),
+            degrees=[0,180], gt_hw_axes=[-2,-1], halve_gt=False):
+    """Performs data augmentation (transforms) on the img and gt.
+    Args:
+        img (PIL Image):
+        gt (numpy array): CHW
+        size (tuple or int):
+    Returns:
+        t_img (torch Tensor): CHW
+        t_gt (torch Tensor):
+    """
+    # random parameter generation
+    i,j,h,w = transforms.RandomResizedCrop.get_params(img, scale, ratio)
+    angle = transforms.RandomRotation.get_params(degrees)
+
+    # convert to torch Tensor and crop
+    img = crop(img, i,j,h,w)    # HWC
+    gt  = crop(gt, i,j,h,w, axes=gt_hw_axes)   # CHW
+
+    # rotate
+    img = scipy.ndimage.rotate(img, angle, reshape=False)
+    gt  = scipy.ndimage.rotate(gt, angle, axes=gt_hw_axes, reshape=False)
+
+    # resize
+    img = cv2.resize(img, dsize=size)
+    # resize(gt->HWC)->CHW
+    gt  = cv2.resize(gt.transpose(1,2,0), dsize=size).transpose(2,0,1)
+
+    # convert to torch tensor
+    img = torch.Tensor(img).permute(2,0,1)  # CHW
+    gt = torch.Tensor(gt)
+
+    # halve gt
+    if halve_gt:
+        gt = F.interpolate(gt[None,...], scale_factor=0.5)[0]
+
+    return img, gt
+
+
+def crop(tensor, i,j,h,w, axes=[0,1]):
+    if isinstance(tensor, (PIL.Image.Image, torch.Tensor)):
+        tensor = np.array(tensor)
+    elif isinstance(tensor, np.ndarray):
+        pass
+    else:
+        print("``crop`` only accepts inputs of type: ``torch.Tensor``, " +
+              "``PIL.Image.Image``, or ``numpy.ndarray``")
+        return None
+
+    # convert all negative indices to nonnegative equivalent
+    axes = [axis % tensor.ndim for axis in axes]
+
+    # get axis order
+    axes_set = set(range(tensor.ndim))
+    channels = list(axes_set - set(axes))
+    axis_order = axes + channels
+
+    # order axes to HW...
+    tensor = tensor.transpose(axis_order)
+    # crop
+    tensor = tensor[i:i+h, j:j+w, ...]
+    # reorder axes back to previous configuration
+    tensor = tensor.transpose(np.argsort(axis_order))
+    return tensor
+
 
 
 if __name__ == '__main__':
