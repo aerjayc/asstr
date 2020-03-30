@@ -453,7 +453,8 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
                 .reshape(-1,2)
 
     # combine img and gts for efficiency
-    imgt = np.concatenate((np.array(img).transpose(2,0,1), gt))
+    img = np.array(img).transpose(2,0,1)
+    imgt = np.concatenate((img, gt))
     # crop
     cropped_imgts = constantShapeCrop(imgt, BB_centroids, shapes)
     # separate cropped_images from cropped_gts
