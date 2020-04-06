@@ -9,6 +9,7 @@ import torch
 import PIL
 from torchvision import transforms
 import scipy.ndimage
+import torch.nn.functional as F
 
 # matfile-specific functions
 def u2ToStr(u2, truncate_space=False):
@@ -355,14 +356,17 @@ def zero_pad(tensors, shape=None, cuda=True):
 def collate(batch):
     imgs = [sample[0] for sample in batch]
     gts = [sample[1] for sample in batch]
-    hard_imgs = [sample[2] for sample in batch]
-    hard_gts = [sample[3] for sample in batch]
+    imgs, gts = zero_pad(imgs), zero_pad(gts)
 
-    img_batch, gt_batch = zero_pad(imgs), zero_pad(gts)
-    hard_img_batch = zero_pad(hard_imgs)
-    hard_gt_batch = zero_pad(hard_gts)
+    if (batch[0][2] is not None) and (batch[0][3] is not None):
+        hard_imgs = [sample[2] for sample in batch]
+        hard_gts = [sample[3] for sample in batch]
+        hard_imgs = zero_pad(hard_imgs)
+        hard_gts = zero_pad(hard_gts)
+    else:
+        hard_imgs, hard_gts = None, None
 
-    return img_batch, gt_batch, hard_img_batch, hard_gt_batch
+    return imgs, gts, hard_imgs, hard_gts
 
 
 def centroid2xy(centroids, shapes):
