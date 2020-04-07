@@ -543,6 +543,8 @@ def crop(tensor, i,j,h,w, axes=[0,1]):
               "``PIL.Image.Image``, or ``numpy.ndarray``")
         return None
 
+    i,j,h,w = int(i), int(j), int(h), int(w)
+
     # convert all negative indices to nonnegative equivalent
     axes = [axis % tensor.ndim for axis in axes]
 
