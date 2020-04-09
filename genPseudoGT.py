@@ -2,9 +2,11 @@ import numpy as np
 import pandas
 import os
 import cv2
+import PIL
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 from craft.craft import CRAFT
 
 import image_proc
@@ -32,7 +34,7 @@ class ICDAR2015Dataset(Dataset):
         idx += 1
         img_name = f"img_{idx}.jpg"
         img_path = os.path.join(self.img_dir, img_name)
-        img = cv2.imread(img_path, self.color_flag)
+        img = PIL.Image.open(img_path)  # cv2.imread(img_path, self.color_flag)
 
         gt_name = f"gt_img_{idx}.txt"
         gt_path = os.path.join(self.gt_dir, gt_name)
@@ -72,16 +74,20 @@ class PseudoGTDataset(ICDAR2015Dataset):
 
         model = self.model
 
-        C,H,W = img.shape
-        gt = np.zeros((H // 2, W // 2, self.num_class), dtype="float32")
+        # C,H,W = img.shape
+        H,W = img.height, img.width
+        gt = np.zeros((H // 2, W // 2, self.num_class), dtype="int32")
         for wordBB in wordBBs:
-            y_min, x_min = np.min(wordBB, axis=0)
-            y_max, x_max = np.max(wordBB, axis=0)
-            wordBB_img = img[:,y_min:y_max, x_min:x_max]
+            x_min, y_min = np.min(wordBB, axis=0).astype("int32")
+            x_max, y_max = np.max(wordBB, axis=0).astype("int32")
+            wordBB_img = img.crop((x_min, y_min, x_max, y_max)) # img[:,y_min:y_max, x_min:x_max]
+            wordBB_img = transforms.functional.to_tensor(wordBB_img)
+            # wordBB_img.show()
+            # input("press Enter to continue...")
 
-            # wordBB_gt,_ = model(wordBB_img)
+            wordBB_gt,_ = model(wordBB_img)
 
-            # y_min, x_min = int(y_min/2.), int(x_min/2.)
+            # y_min, x_min = y_min // 2, x_min // 2
             # y_max = y_min + wordBB_gt.shape[0]
             # x_max = x_min + wordBB_gt.shape[1]
             # gt[y_min:y_max,x_min:x_max,:] = wordBB_gt
@@ -97,7 +103,8 @@ if __name__ == '__main__':
     # dataset = ICDAR2015Dataset(img_dir, gt_dir)
     dataset = PseudoGTDataset(img_dir, gt_dir)
 
-    print(dataset[0])
+    img, gt, wordBBs, texts = dataset[0]
+    img.show()
 
     # img, wordBBs, texts = dataset[0]
     # print(f"img.shape = {img.shape}")
