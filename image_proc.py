@@ -6,6 +6,11 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.path import Path
 import cv2
 import torch
+import PIL
+from torchvision import transforms
+import scipy.ndimage
+import torch.nn.functional as F
+import numbers
 
 # matfile-specific functions
 def u2ToStr(u2, truncate_space=False):
@@ -135,11 +140,11 @@ def genDistortedGauss(BBcoords, img_size, template=None):
     """ Using a pre-made template increases efficiency.
         From `~210 us` to `~90 us` (execution duration, timed using `%timeit`)
     """
-    size = max(getMaxSize(BBcoords))
-    if not size:
-        return None
-
     if template is None:
+        size = max(getMaxSize(BBcoords))
+        if not size:
+            return None
+
         x_mean = 0
         y_mean = 0
         variance = 1
@@ -149,13 +154,23 @@ def genDistortedGauss(BBcoords, img_size, template=None):
 
         x = np.linspace(-bounds, bounds, size, dtype='float32')
         x, y = np.meshgrid(x,x)#.astype('float32')
-        gauss = height * (1/np.sqrt(2*np.pi*variance)) * np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
+        gauss = height * (1/np.sqrt(2*np.pi*variance)) *\
+                np.exp(-((x - x_mean)**2 + (y - y_mean)**2)/(2*variance))
     else:
         gauss = template
 
     distorted_gauss = perspectiveTransform(gauss, final=BBcoords, size=img_size)
 
     return distorted_gauss.astype('float32')
+
+def genGaussianTemplate(size=None):
+    if size is None:
+        size = (32,32)
+    h,w = size
+
+    BB = np.array([[0,0],[w,0],[w,h],[0,h]])
+
+    return genDistortedGauss(BB, size)
 
 def getBreakpoints(txt):
     cumulative = -1
@@ -175,7 +190,7 @@ def txtToInstance(txt):
 
     return instances
 
-def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
+def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=None):
     assert charBB_i.shape[-2:] == (4,2)
     if charBB_i.ndim == 2:  # if only one char
         charBB_i = np.array([charBB_i], dtype='float32')
@@ -189,17 +204,19 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
     pseudoGT_affinity = pseudoGT_blank.copy()
     charBB_prev = None
     for j, charBB in enumerate(charBB_i):
-        region_mask = genDistortedGauss(charBB, img_size=image_shape)
+        region_mask = genDistortedGauss(charBB, img_size=image_shape,
+                                        template=template)
         if not (region_mask is None):
             pseudoGT_region += region_mask
 
         # if prev char is not a breakpoint = if curr char same instance as prev
         if ((j-1) not in breakpoints) and (j > 0) and generate_affinity:
-            if region_mask is None:    # if previous char (assuming same instance) has zero size
-                continue
+            if region_mask is None:         # if previous char (assuming same
+                continue                    # instance) has zero size
 
             affinityBB = order_points(getAffinityBB(charBB_prev, charBB))
-            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape)
+            affinity_mask = genDistortedGauss(affinityBB, img_size=image_shape,
+                                              template=template)
             if not (affinity_mask is None):
                 pseudoGT_affinity += affinity_mask
         charBB_prev = charBB
@@ -209,7 +226,7 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True):
 
     return pseudoGT_region, pseudoGT_affinity
 
-def genWordGT(wordBB_i, image_shape):
+def genWordGT(wordBB_i, image_shape, template=None):
     assert wordBB_i.shape[-2:] == (4,2)
     if wordBB_i.ndim == 2:  # if only one word
         wordBB_i = np.array([wordBB_i], dtype='float32')
@@ -217,7 +234,8 @@ def genWordGT(wordBB_i, image_shape):
     mask = np.zeros(image_shape, dtype='float32')
 
     for j, wordBB in enumerate(wordBB_i):
-        mask += genDistortedGauss(wordBB, img_size=image_shape)
+        mask += genDistortedGauss(wordBB, img_size=image_shape,
+                                  template=template)
 
     return mask.astype('float32')
 
@@ -234,7 +252,7 @@ def genDirectionMapTemplate(temp_shape=(32,32)):
     return cos_temp, sin_temp
 
 
-def genDirectionGT(BBs, img_size, template=None, normalize=True):
+def genDirectionGT(BBs, img_size, template=None, normalize=False):
     """~7 times faster (excluding the template generation time)
         ``` In [85]: %timeit image_proc.genDirectionGT_efficient(BB, (10,10), template=t)
                 207 µs ± 510 ns per loop (mean ± std. dev. of 7 runs, 1000 loops each)
@@ -252,12 +270,14 @@ def genDirectionGT(BBs, img_size, template=None, normalize=True):
     cos_mask = np.zeros(img_size, dtype="float32")
     sin_mask = cos_mask.copy()
     for BB in BBs:
-        cos_mask += perspectiveTransform(template[0], final=BB, size=img_size).astype("float32")
-        sin_mask += perspectiveTransform(template[1], final=BB, size=img_size).astype("float32")
+        cos_mask += perspectiveTransform(template[0], final=BB, size=img_size)
+        sin_mask += perspectiveTransform(template[1], final=BB, size=img_size)
 
+    np.clip(cos_mask, -1, 1, out=cos_mask)
+    np.clip(sin_mask, -1, 1, out=sin_mask)
     if normalize:
-        cos_mask = (cos_mask + 1) / 2.
-        sin_mask = (sin_mask + 1) / 2.
+        cos_mask = (cos_mask + 1) / 2
+        sin_mask = (sin_mask + 1) / 2
 
     return cos_mask, sin_mask
 
@@ -282,7 +302,7 @@ def genDirectionMap(charBB, img_size):
     x_min, y_min = np.min(charBB, axis=0)
     x_max, y_max = np.max(charBB, axis=0)
 
-    # https://stackoverflow.com/questions/21339448/how-to-get-list-of-points-inside-a-polygon-in-python
+    # https://stackoverflow.com/questions/21339448
     x,y = np.meshgrid(np.arange(x_min,x_max), np.arange(y_min,y_max))
     x,y = x.flatten(), y.flatten()
     points = np.vstack((x,y)).astype('int32').T
@@ -301,35 +321,37 @@ def genDirectionMap(charBB, img_size):
 
     return cos_field, sin_field
 
-def zero_pad(tensors, shape=None):
+def zero_pad(tensors, shape=None, cuda=True):
     """ Input:
             `tensors`:  a list of (C,h,w)-shaped tensors
                         (variable h,w)
         Output is shaped (N,C,H,W) where h,w = max(h), max(w)
     """
     if shape is None:
-        max_shape = np.max([tensor.shape for tensor in tensors], axis=0).astype("int32").tolist()
-        batch_shape = [len(tensors),] + max_shape
+        max_shape = np.max([tensor.shape for tensor in tensors], axis=0)\
+                        .astype("int32").tolist()
+        if len(max_shape) == 4: # if batched already (e.g. NCHW)
+            N = sum([len(tensor) for tensor in tensors])
+            batch_shape = [N,] + max_shape[-3:]
+        else:
+            N = len(tensors)
+            batch_shape = [N,] + max_shape
 
     template = torch.zeros(batch_shape)
-    for i, tensor in enumerate(tensors):
-        i_shape = tensor.shape
-        template[i,...,:i_shape[-3],:i_shape[-2],:i_shape[-1]] = tensor
+    i = 0
+    for tensor in tensors:
+        s = tensor.shape
+        if len(s) == 4:
+            i_end = i + s[0]
+        else:
+            i_end = i + 1
+        template[i:i_end, :s[-3], :s[-2], :s[-1]] = tensor
+
+        i = i_end
+
+    if cuda: template = template.cuda()
 
     return template
-
-
-def collate(batch):
-    imgs = [sample[0] for sample in batch]
-    gts = [sample[1] for sample in batch]
-    hard_imgs = [sample[2] for sample in batch]
-    hard_gts = [sample[3] for sample in batch]
-
-    img_batch, gt_batch = zero_pad(imgs), zero_pad(gts)
-    hard_img_batch = zero_pad(hard_imgs)
-    hard_gt_batch = zero_pad(hard_gts)
-
-    return img_batch, gt_batch, hard_img_batch, hard_gt_batch
 
 
 def centroid2xy(centroids, shapes):
@@ -378,7 +400,7 @@ def centroid2minmax(centroids, shapes, yx_max):
 
 def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     """ Inputs:
-            - `img`: numpy array shaped `(C, H, W)`
+            - `img`: PIL Image
             - `gt`: must have the same width and height as `img`
                     i.e. a numpy array shaped (..., H, W)
             - `wordBBs`: numpy array shaped `(N_words, H, W)`
@@ -405,7 +427,7 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     BB_centroids = np.fliplr(word_centroids[indices])
 
     # pick semi-random width & height (only once)
-    img_height, img_width = img.shape[-2:]
+    img_height, img_width = img.height, img.width
     scaling_factors = np.array([0.5, 0.3, 0.25, 0.2], dtype="float32")
     cropped_heights = (scaling_factors*img_height).astype("int32")
     cropped_widths = (scaling_factors*img_width).astype("int32")
@@ -413,12 +435,14 @@ def hard_example_mining(img, gt, wordBBs, N_examples=4, constant_hw=True):
     if constant_hw:
         N_examples = 1
 
-    # generate `2*N_examples` integers (from `dimensions`) to get `N_examples` heights and widths
+    # generate `2*N_examples` ints (from `dimensions`) to get `N_examples` h,w
     cropped_height = np.random.choice(cropped_heights, size=N_examples)
     cropped_width = np.random.choice(cropped_widths, size=N_examples)
-    shapes = np.array([[cropped_height, cropped_width]], dtype="int32").reshape(-1,2)
+    shapes = np.array([[cropped_height, cropped_width]], dtype="int32")\
+                .reshape(-1,2)
 
     # combine img and gts for efficiency
+    img = np.array(img).transpose(2,0,1)
     imgt = np.concatenate((img, gt))
     # crop
     cropped_imgts = constantShapeCrop(imgt, BB_centroids, shapes)
@@ -454,6 +478,77 @@ def constantShapeCrop(img, centroids, shapes):
         batch = np.concatenate((batch, cropped))
 
     return batch
+
+def augment(img, gt, size=None, scale=(0.08, 1.0), ratio=(3./4, 4./3),
+            degrees=[0,180], gt_hw_axes=[-2,-1], halve_gt=False):
+    """Performs data augmentation (transforms) on the img and gt.
+    Args:
+        img (PIL Image):
+        gt (numpy array): CHW
+        size (tuple or int or None):
+    Returns:
+        t_img (torch Tensor): CHW
+        t_gt (torch Tensor):
+    """
+    if isinstance(size, numbers.Number):
+        size = (size, size)
+    # random parameter generation
+    i,j,h,w = transforms.RandomResizedCrop.get_params(img, scale, ratio)
+    angle = transforms.RandomRotation.get_params(degrees)
+
+    # rotate
+    img = scipy.ndimage.rotate(img, angle, reshape=False)
+    gt  = scipy.ndimage.rotate(gt, angle, axes=gt_hw_axes, reshape=False)
+
+    # convert to torch Tensor and crop
+    img = crop(img, i,j,h,w)    # HWC
+    gt  = crop(gt, i,j,h,w, axes=gt_hw_axes)   # CHW
+
+    # resize
+    if size:
+        img = cv2.resize(img, dsize=size)
+        # resize(gt->HWC)->CHW
+        gt  = cv2.resize(gt.transpose(1,2,0), dsize=size).transpose(2,0,1)
+
+    # convert to torch tensor
+    img = torch.Tensor(img).permute(2,0,1)  # CHW
+    gt = torch.Tensor(gt)                   # CHW
+
+    # halve gt
+    if halve_gt:
+        gt = F.interpolate(gt[None,...], scale_factor=0.5)[0]
+
+    return img, gt
+
+
+def crop(tensor, i,j,h,w, axes=[0,1]):
+    if isinstance(tensor, (PIL.Image.Image, torch.Tensor)):
+        tensor = np.array(tensor)
+    elif isinstance(tensor, np.ndarray):
+        pass
+    else:
+        print("``crop`` only accepts inputs of type: ``torch.Tensor``, " +
+              "``PIL.Image.Image``, or ``numpy.ndarray``")
+        return None
+
+    i,j,h,w = int(i), int(j), int(h), int(w)
+
+    # convert all negative indices to nonnegative equivalent
+    axes = [axis % tensor.ndim for axis in axes]
+
+    # get axis order
+    axes_set = set(range(tensor.ndim))
+    channels = list(axes_set - set(axes))
+    axis_order = axes + channels
+
+    # order axes to HW...
+    tensor = tensor.transpose(axis_order)
+    # crop
+    tensor = tensor[i:i+h, j:j+w, ...]
+    # reorder axes back to previous configuration
+    tensor = tensor.transpose(np.argsort(axis_order))
+    return tensor
+
 
 
 if __name__ == '__main__':

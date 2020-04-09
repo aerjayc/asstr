@@ -94,25 +94,27 @@ gt.mat
 
 
 ### To do
-
+- input augmentation
+    - random resize, rotate, crop
 - prioritize char level loss
-- the rest of the GT maps
-    - make direction maps efficient
-        - warp pre-made direction map to charBB instead of regenerating every time
 - fix affinity maps bug
-- sigmoid
-    - note: can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
-- train/~~val~~/test split (done)
-- normalization (done)
-- batch normalization
 - make all functions use gpu
     - halving the output features should be done in gpu
-- test overfitting (done)
 - hard example mining
-- ~~use float16~~
-    - *use float32* instead, see https://stackoverflow.com/questions/24587433/
 - check on `order_points` when pixels are too close (using pythagoras)
 
+### Done
+- ~~use float16~~
+    - *use float32* instead, see https://stackoverflow.com/questions/24587433/ (done)
+- test overfitting (done)
+- batch normalization (done automatically by craft)
+- train/~~val~~/test split (done)
+- normalization (done)
+- the rest of the GT maps
+    - make direction maps efficient (done)
+        - warp pre-made direction map to charBB instead of regenerating every time
+- sigmoid (done) + tanh (done)
+    - note: sigmoid can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
 
 ### Useful scripts:
 - to count unique image bases: `ls -Rp | sed -n "s/\(.*\)_[0-9]*_[0-9]*\.jpg/\1/p" | sort | uniq | wc -l`
