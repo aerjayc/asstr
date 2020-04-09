@@ -10,6 +10,7 @@ import PIL
 from torchvision import transforms
 import scipy.ndimage
 import torch.nn.functional as F
+import numbers
 
 # matfile-specific functions
 def u2ToStr(u2, truncate_space=False):
@@ -353,22 +354,6 @@ def zero_pad(tensors, shape=None, cuda=True):
     return template
 
 
-def collate(batch):
-    imgs = [sample[0] for sample in batch]
-    gts = [sample[1] for sample in batch]
-    imgs, gts = zero_pad(imgs), zero_pad(gts)
-
-    if (batch[0][2] is not None) and (batch[0][3] is not None):
-        hard_imgs = [sample[2] for sample in batch]
-        hard_gts = [sample[3] for sample in batch]
-        hard_imgs = zero_pad(hard_imgs)
-        hard_gts = zero_pad(hard_gts)
-    else:
-        hard_imgs, hard_gts = None, None
-
-    return imgs, gts, hard_imgs, hard_gts
-
-
 def centroid2xy(centroids, shapes):
     assert shapes.shape[-1:] == (2,), f"shapes.shape = {shapes.shape}"
     if shapes.shape == (2,):
@@ -494,17 +479,19 @@ def constantShapeCrop(img, centroids, shapes):
 
     return batch
 
-def augment(img, gt, size=(768,768), scale=(0.08, 1.0), ratio=(3./4, 4./3),
+def augment(img, gt, size=None, scale=(0.08, 1.0), ratio=(3./4, 4./3),
             degrees=[0,180], gt_hw_axes=[-2,-1], halve_gt=False):
     """Performs data augmentation (transforms) on the img and gt.
     Args:
         img (PIL Image):
         gt (numpy array): CHW
-        size (tuple or int):
+        size (tuple or int or None):
     Returns:
         t_img (torch Tensor): CHW
         t_gt (torch Tensor):
     """
+    if isinstance(size, numbers.Number):
+        size = (size, size)
     # random parameter generation
     i,j,h,w = transforms.RandomResizedCrop.get_params(img, scale, ratio)
     angle = transforms.RandomRotation.get_params(degrees)
@@ -518,13 +505,14 @@ def augment(img, gt, size=(768,768), scale=(0.08, 1.0), ratio=(3./4, 4./3),
     gt  = crop(gt, i,j,h,w, axes=gt_hw_axes)   # CHW
 
     # resize
-    img = cv2.resize(img, dsize=size)
-    # resize(gt->HWC)->CHW
-    gt  = cv2.resize(gt.transpose(1,2,0), dsize=size).transpose(2,0,1)
+    if size:
+        img = cv2.resize(img, dsize=size)
+        # resize(gt->HWC)->CHW
+        gt  = cv2.resize(gt.transpose(1,2,0), dsize=size).transpose(2,0,1)
 
     # convert to torch tensor
     img = torch.Tensor(img).permute(2,0,1)  # CHW
-    gt = torch.Tensor(gt)
+    gt = torch.Tensor(gt)                   # CHW
 
     # halve gt
     if halve_gt:
