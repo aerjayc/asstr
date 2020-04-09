@@ -73,7 +73,7 @@ class PseudoGTDataset(ICDAR2015Dataset):
         model = self.model
 
         C,H,W = img.shape
-        gt = np.zeros((int(H/2.),int(W/2.),self.num_class), dtype="float32")
+        gt = np.zeros((H // 2, W // 2, self.num_class), dtype="float32")
         for wordBB in wordBBs:
             y_min, x_min = np.min(wordBB, axis=0)
             y_max, x_max = np.max(wordBB, axis=0)
