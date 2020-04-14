@@ -6,9 +6,10 @@ import PIL
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+
 from torchvision import transforms
 from craft.craft import CRAFT
-
+import torch.nn.functional as F
 import image_proc
 
 from matplotlib import pyplot as plt
@@ -50,7 +51,7 @@ class ICDAR2015Dataset(Dataset):
 
 class PseudoGTDataset(ICDAR2015Dataset):
     def __init__(self, img_dir, gt_dir, weights_path=None, color_flag=1,
-                 character_map=True, affinity_map=False, word_map=True,
+                 character_map=True, affinity_map=False, word_map=False,
                  direction_map=True):
         # super(ICDAR2015Dataset).__init__()
         self.raw_dataset = ICDAR2015Dataset(img_dir, gt_dir, color_flag=color_flag)
@@ -76,21 +77,24 @@ class PseudoGTDataset(ICDAR2015Dataset):
 
         # C,H,W = img.shape
         H,W = img.height, img.width
-        gt = np.zeros((H // 2, W // 2, self.num_class), dtype="int32")
+        gt = np.zeros((H // 2, W // 2, self.num_class), dtype="float32")
         for wordBB in wordBBs:
             x_min, y_min = np.min(wordBB, axis=0).astype("int32")
             x_max, y_max = np.max(wordBB, axis=0).astype("int32")
             wordBB_img = img.crop((x_min, y_min, x_max, y_max)) # img[:,y_min:y_max, x_min:x_max]
-            wordBB_img = transforms.functional.to_tensor(wordBB_img)
+            wordBB_img = transforms.functional.to_tensor(wordBB_img)    # CHW
+            # print(f"wordBB_img.shape = {wordBB_img.shape}")
             # wordBB_img.show()
             # input("press Enter to continue...")
 
             wordBB_gt,_ = model(wordBB_img)
+            # wordBB_gt = F.interpolate(wordBB_img[None,...], scale_factor=0.5)[0]\
+            #           .permute(1,2,0)   # HWC
 
-            # y_min, x_min = y_min // 2, x_min // 2
-            # y_max = y_min + wordBB_gt.shape[0]
-            # x_max = x_min + wordBB_gt.shape[1]
-            # gt[y_min:y_max,x_min:x_max,:] = wordBB_gt
+            y_min, x_min = y_min // 2, x_min // 2
+            y_max = y_min + wordBB_gt.shape[0]
+            x_max = x_min + wordBB_gt.shape[1]
+            gt[y_min:y_max,x_min:x_max,:] = wordBB_gt
 
         return img, gt, wordBBs, texts
 
@@ -100,15 +104,13 @@ if __name__ == '__main__':
     base_dir = "/media/aerjay/Acer/Users/Aerjay/Downloads/datasets/icdar-2015"
     img_dir = os.path.join(base_dir, "4.1 - Text Localization/ch4_training_images")
     gt_dir = os.path.join(base_dir, "4.1 - Text Localization/ch4_training_localization_transcription_gt")
-    # dataset = ICDAR2015Dataset(img_dir, gt_dir)
     dataset = PseudoGTDataset(img_dir, gt_dir)
 
     img, gt, wordBBs, texts = dataset[0]
-    img.show()
+    print(f"gt.shape = {gt.shape}")
 
-    # img, wordBBs, texts = dataset[0]
-    # print(f"img.shape = {img.shape}")
-
-    # plt.figure()
-    # plt.imshow(img)
-    # plt.show()
+    plt.figure()
+    plt.imshow(img)
+    plt.figure()
+    plt.imshow(gt)
+    plt.show()
