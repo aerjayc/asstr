@@ -47,8 +47,6 @@ class ICDAR2015Dataset(Dataset):
 
         return img, wordBBs, texts
 
-
-
 class PseudoGTDataset(ICDAR2015Dataset):
     def __init__(self, img_dir, gt_dir, weights_path=None, color_flag=1,
                  character_map=True, affinity_map=False, word_map=False,
@@ -98,6 +96,25 @@ class PseudoGTDataset(ICDAR2015Dataset):
 
         return img, gt, wordBBs, texts
 
+def genConfidence(charBBs, gt_shape, p_charBBs):
+    s = torch.ones(gt_shape).astype("float32")
+
+    # conditional pdfs of each charBB
+    #p_charBBs = [[], [], ...]
+    # preprocess to get scalar values (probability of being a char)
+    #conf_charBBs = []
+
+    # tile all charBBs with their corresponding confidences
+    for charBB, conf_charBB in zip(charBBs, conf_charBBs):
+        # assumes charBB is oriented at angle 0
+        x_min, y_min = torch.min(charBB, axis=0).astype("int32")
+        x_max, y_max = torch.max(charBB, axis=0).astype("int32")
+
+        charBB_shape = gt_shape[0], (y_max - y_min), (x_max - x_min)
+        # s[charBB] = conf_charBB*torch.ones(shape of charBB)
+        s[:,y_min:y_max,x_min:x_max] = conf_charBB*torch.ones(charBB_shape)
+
+    return s
 
 
 if __name__ == '__main__':
