@@ -4,23 +4,23 @@ gt.mat
     * f[name] | name = {'charBB', 'wordBB', 'immnames', 'txt'}
         * f[name][i][0] = hdf5 object reference; 0 < i < 8750
                         = index
-    
+
     * f[ f['charBB' or 'wordBB'][i][0] ][j] = [charBBxy4_j]; 0 < j < N_chars or N_words
         * charBBxy4_j = [ (x0,y0),
                           (x1,y1),
                           (x2,y2),
                           (x3,y3) ]
-    
+
     * f[ f['imnames'][i][0] ] = [ [fnamechar_0], [fnamechar_1], ... ] where char_i = ith char of fname
                               = imname
         * imname[j][0] = fnamechar_j
-    
+
     *
 
-    
+
     * charBB
         * shape: (8750, 1)
-            * 
+            *
     * wordBB
     * imnames
     * txt
@@ -42,3 +42,86 @@ gt.mat
          ';': 5439, '&': 3075, '+': 2463, 'Q': 6569, '$': 11250, '@': 7708, '/': 10237,
          '|': 3972, '!': 9441, '<': 1989, '#': 3431, '`': 1166, '{': 549, '~': 469,
          '\\': 242, '}': 492, '^': 166}``
+
+
+### Problems/notes
+
+- dataset sample 196 produces warning `/home/eee198/Documents/ocr/asstr/image_proc.py:28: RuntimeWarning: invalid value encountered in float_scalars
+  angle = np.arctan(y/x)`
+    - 8/ballet_107_79.jpg
+
+- dataset sample in [33600, 33700] produces error `error: OpenCV(3.4.2) /tmp/build/80754af9/opencv-suite_1535558553474/work/modules/imgproc/src/imgwarp.cpp:2902: error: (-215:Assertion failed) _src.total() > 0 in function 'warpPerspective'`
+
+- dataset sample 1150 produces error: `error: OpenCV(3.4.2) /tmp/build/80754af9/opencv-suite_1535558553474/work/modules/imgproc/src/imgwarp.cpp:2902: error: (-215:Assertion failed) _src.total() > 0 in function 'warpPerspective'`
+    - due to affinityBB
+
+- dataset sample in [189, 199), [1479,1489) produces warning `/home/eee198/Documents/ocr/asstr/image_proc.py:24: RuntimeWarning: invalid value encountered in float_scalars angle = np.arctan(y/x)`
+    - origin = (0,0), BBcoords = (0,0), occurs during regionBB
+
+- minibatching will cause problems when the image shapes are not equal
+    - padding
+    - resizing (distortion)
+- on the fly GT creation is a bottleneck
+- no errors up to 10000
+
+
+## Big Picture
+
+1. ~~Char Map generation from Char BB~~ - *done*
+    - Aerjay
+2. Text Detector Training Code - *done* (needs cleaning)
+    - ~~Timothy~~ Aerjay
+3. Classifier Training Code - *ongoing*
+    - ~~Aerjay~~ Timothy
+4. Text Detector Training on Synthetic Data - *ongoing*
+    - ~~Timothy~~ Aerjay
+5. Classifier Training on Synthetic Data - *next*
+    - ~~Aerjay~~ Timothy
+6. Algorithm for Pseudo-GT Generation - *next*
+    - ~~Timothy~~ Aerjay
+7. ~~Char BB Generation from Char Maps~~ - *done*
+    - ~~Aerjay~~ Timothy
+8. Character-level Penalization Algorithm
+    - Aerjay
+9. Algorithm to deal with non-equal GT lengths
+    - Timothy
+10. Code for Text Detector Training
+    - Aerjay
+11. Classifier Training on Real-World Data
+    - Timothy
+12. Iterative Training of Detector and Classifier
+    -
+
+
+### To do
+- input augmentation
+    - random resize, rotate, crop
+- prioritize char level loss
+- fix affinity maps bug
+- make all functions use gpu
+    - halving the output features should be done in gpu
+- hard example mining
+- check on `order_points` when pixels are too close (using pythagoras)
+
+### Done
+- ~~use float16~~
+    - *use float32* instead, see https://stackoverflow.com/questions/24587433/ (done)
+- test overfitting (done)
+- batch normalization (done automatically by craft)
+- train/~~val~~/test split (done)
+- normalization (done)
+- the rest of the GT maps
+    - make direction maps efficient (done)
+        - warp pre-made direction map to charBB instead of regenerating every time
+- sigmoid (done) + tanh (done)
+    - note: sigmoid can't be used directly on gt's with values outside [0,1] e.g. cos/sin maps
+
+### Useful scripts:
+- to count unique image bases: `ls -Rp | sed -n "s/\(.*\)_[0-9]*_[0-9]*\.jpg/\1/p" | sort | uniq | wc -l`
+    - (110 images)
+    - misleading, some distinct images share same base filename
+
+
+### Teamviewer
+- Partner ID: `735778156`
+- Passcode: `62zp9v`

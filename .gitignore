@@ -1,5 +1,6 @@
 *.mat
 *.swp
+#*.ipynb
 __pycache__/
 .ipynb_checkpoints/
 
@@ -7,6 +8,8 @@ __pycache__/
 *.code-workspace
 
 images/
+notebook/
+.ipynb_checkpoints/
 test.py
 trash.py
 distribution.txt
