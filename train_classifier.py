@@ -25,8 +25,8 @@ def genChar():
     pass
     # return cropped, char
 
-def genBalancedCharDataset(N_max, img_dir, mat_dir, char_dir, skip_existing=True,
-                           classes=None, N_images = 858750, matboundary=50000):
+def genBalancedCharDataset(N_max, img_dir, mat_path, char_dir, skip_existing=True,
+                           classes=None):
     """ randomly select images forever
         for each selected image, save the character img
         and update the distribution
@@ -36,21 +36,18 @@ def genBalancedCharDataset(N_max, img_dir, mat_dir, char_dir, skip_existing=True
     distribution = {c:0 for c in classes}
             # initialize distribution to the already-saved images
 
-    # generate a sequence of N integers < 858750
+    f = h5py.File(mat_path, 'r')
+    N_images = len(f['imnames'])
+    # generate a random sequence of nonnegative integers < N_images
     for i in random.sample(range(N_images), N_images):
         if min(distribution.values()) >= N_max:
             break
-        # determine matnum: i in gt_{matnum}.mat
-        matnum = int(i/50000)
-        matpath = os.path.join(mat_dir, f"gt_{matnum}.mat")
-        f = h5py.File(matpath, 'r')
 
         # determine the image number wrt matnum
-        j = i % matboundary
-        string = "".join(image_proc.txtToInstance(f[f['txt'][j][0]]))
-        imname = image_proc.u2ToStr(f[f['imnames'][j][0]])
+        string = "".join(image_proc.txtToInstance(f[f['txt'][i][0]]))
+        imname = image_proc.u2ToStr(f[f['imnames'][i][0]])
         img_path = os.path.join(img_dir, imname)
-        #print(f"gt_{matnum}.mat\t {img_path}") #
+        # print(f"img_path: {img_path}") #
 
         for k, char in enumerate(string):
             if char not in distribution:
@@ -58,7 +55,7 @@ def genBalancedCharDataset(N_max, img_dir, mat_dir, char_dir, skip_existing=True
             if distribution[char] >= N_max:
                 continue
             # determine output img path
-            char_path = os.path.join(char_dir, char, f"{char}_{i}_{j}_{k}.png")
+            char_path = os.path.join(char_dir, char, f"{char}_{i}_{k}.png")
             print(char_path, end='')
             Path(os.path.split(char_path)[0]).mkdir(parents=True, exist_ok=True)
             if skip_existing and os.path.isfile(char_path):
@@ -67,7 +64,7 @@ def genBalancedCharDataset(N_max, img_dir, mat_dir, char_dir, skip_existing=True
             print("")
 
             # write img to path
-            charBB = f[f['charBB'][j][0]][k]
+            charBB = f[f['charBB'][i][0]][k]
             char_img = getCroppedImage(img_path, charBB)
             cv2.imwrite(char_path, char_img)
 
@@ -139,9 +136,14 @@ def getSample(f, entry_no, char_no, image_dir):
 
 
 if __name__ == '__main__':
-    img_dir = 'C:/Users/Aerjay/Downloads/SynthText/SynthText'
-    mat_dir = 'C:/Users/Aerjay/Downloads/SynthText/parts'
-    char_dir = 'C:/Users/Aerjay/Downloads/SynthText/chars'
+    windows_path_prefix = "C:"
+    linux_path_prefix = "/mnt/A4B04DFEB04DD806"
+
+    path_prefix = linux_path_prefix
+    img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
+    mat_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
+    char_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/chars'
+
     classes = ['a', 'e', 'i', 'o', 'u']
     # simpleGenChar(10, img_dir, mat_dir, N_images=100)
-    genBalancedCharDataset(20, img_dir, mat_dir, char_dir, classes=classes)
+    genBalancedCharDataset(20, img_dir, mat_path, char_dir, classes=classes)
