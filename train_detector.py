@@ -292,7 +292,7 @@ def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwarg
 
     return dataloader, train, test
 
-def init_model(weight_dir, weight_fname=None, num_class=3):
+def init_model(weight_dir, weight_path=None, num_class=3):
     # make weight_dir if it doesn't exist
     Path(weight_dir).mkdir(parents=True, exist_ok=True)
 
@@ -300,9 +300,9 @@ def init_model(weight_dir, weight_fname=None, num_class=3):
     model = CRAFT(pretrained=True, num_class=num_class).cuda()
     # output: NHWC
 
-    if weight_fname:
-        pretrained_weight_path = os.path.join(weight_dir, weight_fname)
-        model.load_state_dict(torch.load(pretrained_weight_path))
+    if weight_path:
+        # pretrained_weight_path = os.path.join(weight_dir, weight_fname)
+        model.load_state_dict(torch.load(weight_path))
         model.eval()
 
     criterion = nn.MSELoss()
@@ -369,7 +369,7 @@ def main(weight_folder):
     gt_path = "/home/eee198/Downloads/SynthText/gt_v7.3.mat"
     img_dir = "/home/eee198/Downloads/SynthText/images"
     weight_dir = "/home/eee198/Downloads/SynthText/weights/" + weight_folder
-    weight_fname = None     # pretrained weights
+    weight_path = None     # pretrained weights
 
     dataset_kwargs = {
         "cuda": True
@@ -382,7 +382,7 @@ def main(weight_folder):
 
     dataloader, train, test = init_data(gt_path, img_dir,
             dataset_kwargs=dataset_kwargs, dataloader_kwargs=dataloader_kwargs)
-    model, criterion, optimizer = init_model(weight_dir, weight_fname, num_class)
+    model, criterion, optimizer = init_model(weight_dir, weight_path, num_class)
 
     train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=epochs)
 
