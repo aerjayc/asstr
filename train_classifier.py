@@ -8,23 +8,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-def genChar():
-    # 1. randomly select character + GT from dataset by:
-        # a. select matfile at random
-        # b. select image file at random
-        # c. select character at random
-    # 2. use
-
-    # get random integer i : 0 <= i <= 17
-        # matfname = gt_{i}.mat
-    # get random integer j : 0 <= j <= len(gt_i)
-    # get random integer k : 0 <= k <= len(f[f['charBB'][i][0]])
-    matpath = ''    # randomly selected
-    f = h5py.File(matpath, 'r')
-    charBB = f[f['charBB'][0][0]]
-    pass
-    # return cropped, char
-
 def genBalancedCharDataset(N_max, img_dir, mat_path, char_dir, skip_existing=True,
                            classes=None):
     """ randomly select images forever
