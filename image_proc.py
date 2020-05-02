@@ -522,7 +522,24 @@ def augment(img, gt, size=None, scale=(0.08, 1.0), ratio=(3./4, 4./3),
 
 
 def crop(tensor, i,j,h,w, axes=[0,1]):
-    if isinstance(tensor, (PIL.Image.Image, torch.Tensor)):
+    """ crops tensor
+    Args:
+        tensor (torch Tensor, PIL Image, or numpy array): tensor to be cropped
+            - if torch.Tensor and axes=None: assumes shape of (...,H,W)
+            - if PIL.Image.Image: ``axes`` is ignored
+            - if numpy.ndarray and axes=None: assumes shape of (H,W,...)
+            - if axes is not None: assume ``axes`` are the indices of H,W
+                respectively, except if tensor is a PIL Image
+        i,j,h,w (numbers): x_topleft, y_topleft, height, width respectively
+            - converted to integers (truncate fractional part) before usage
+        axes (list-type of length 2): indices of the height and width channels,
+            respectively
+    """
+    if isinstance(tensor, PIL.Image.Image):
+        tensor = np.array(tensor)   # (H,W,C)
+    elif isinstance(tensor, torch.Tensor):
+        if axes is None:
+            axes = [-2,-1]  # assume shape of (...,H,W)
         tensor = np.array(tensor)
     elif isinstance(tensor, np.ndarray):
         pass
@@ -549,6 +566,18 @@ def crop(tensor, i,j,h,w, axes=[0,1]):
     tensor = tensor.transpose(np.argsort(axis_order))
     return tensor
 
+def get_containing_rect(BB):
+    """Returns the BB coordinates of the rectangle that
+        circumscribes the
+    """
+    BB = order_points(BB)
+
+    tl = np.min(BB, axis=0)
+    br = np.max(BB, axis=0)
+    tr = np.array([br[0], tl[1]])
+    bl = np.array([tl[0], br[1]])
+
+    return np.array([tl, tr, br, bl])
 
 
 if __name__ == '__main__':
