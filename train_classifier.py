@@ -8,8 +8,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
+import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
+import torch.utils.data
+from torch.utils.data import Dataset, DataLoader
 
 import image_proc
 
@@ -28,6 +34,8 @@ class SynthCharDataset(Dataset):
 
         self.f = h5py.File(gt_path, 'r')
         self.length = len(self.f['imnames'])
+
+        self.alphabet = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
 
     def __len__(self):
         return self.length
@@ -79,10 +87,10 @@ class SynthCharDataset(Dataset):
             # resize
             cropped = cv2.resize(cropped, dsize=self.size)  # numpy input
 
-            if i == 10:
-                print(chars[i])
-                plt.imshow(cropped.astype('int32'))
-                plt.show()
+            # if i == 10:
+            #     print(chars[i])
+            #     plt.imshow(cropped.astype('int32'))
+            #     plt.show()
 
             # append to batch
             batch[i] = cropped.transpose(2,0,1)   # CHW
@@ -90,12 +98,13 @@ class SynthCharDataset(Dataset):
 
 
         # convert to tensor
-        batch = torch.from_numpy(batch)
+        batch = torch.from_numpy(batch).double()
 
         # convert chars to stack of one-hot vectors
-        onehot_chars = string_to_onehot(chars)
+        onehot_chars = string_to_onehot(chars, alphabet=self.alphabet,
+                            to_onehot=False).long()
 
-        return cropped, onehot_chars
+        return batch, onehot_chars
 
 
     def collate_fn(batch):
@@ -133,7 +142,7 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
 
     # limit the inputs to ``batch_size_limit``
     if len(gts) >= batch_size_limit:
-        BBs = BBs[:N]
+        charBBs = charBBs[:N]
         gts = gts[:N]
 
     # perturb each coordinate in charBB, biased to increase the area
@@ -154,7 +163,8 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
                                [ 1, 1],
                                [-1, 1]])
 
-            charBBs[i] += noise
+            # ceil to prevent h=0 or w=0
+            charBBs[i] = np.ceil(charBBs[i] + noise)
             charBBs[i] = np.clip(charBBs[i] + noise, 0, img_wh)
 
     return charBBs, gts
@@ -172,14 +182,16 @@ def genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10):
     return None
 
 
-def string_to_onehot(string, alphabet=None, char_to_int=None):
+def string_to_onehot(string, alphabet=None, char_to_int=None, include_nonchar=True,
+                     to_onehot=True):
     # based on https://stackoverflow.com/questions/49370940/
     if not char_to_int:
         if not alphabet:
             alphabet = "AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ"
         # a dict mapping every char of alphabet to unique int based on position
         char_to_int = dict((c,i) for i,c in enumerate(alphabet))
-        char_to_int[None] = len(char_to_int)
+        if include_nonchar and (None not in char_to_int):
+            char_to_int[None] = len(char_to_int)
 
     # convert string to array of ints
     encoded_data = []
@@ -195,12 +207,15 @@ def string_to_onehot(string, alphabet=None, char_to_int=None):
         encoded_data.append(char_to_int[char])
     # encoded_data = [char_to_int[char] if char in alphabet else char_to_int[char.swapcase()] for char in string]
 
-    # convert array of ints to one-hot vectors
-    one_hots = torch.zeros(len(string), len(char_to_int))
-    for i, j in enumerate(encoded_data):
-        one_hots[i][j] = 1
+    if to_onehot:
+        # convert array of ints to one-hot vectors
+        one_hots = torch.zeros(len(string), len(char_to_int))
+        for i, j in enumerate(encoded_data):
+            one_hots[i][j] = 1.0
 
-    return one_hots
+        return one_hots
+    else:
+        return torch.Tensor(encoded_data)
 
 
 def cropBB(img, BB, size=None, fast=False):
@@ -337,6 +352,102 @@ def getSample(f, entry_no, char_no, image_dir):
     char = string[char_no]
 
     return image, char, imname
+
+# def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}):
+#     dataset = SynthCharDataset(gt_path, img_dir, **dataset_kwargs)
+#     train, test, validation = torch.utils.data.random_split(dataset, kwargs["split"])
+
+def main():
+    windows_path_prefix = "C:"
+    linux_path_prefix = "/mnt/A4B04DFEB04DD806"
+
+    path_prefix = linux_path_prefix
+    img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
+    gt_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
+    char_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/chars'
+
+    size = (64,64)
+
+    epochs = range(1)
+
+    dataset = SynthCharDataset(gt_path, img_dir, size)
+
+    N = len(dataset)
+    train_test_val = [int(0.8*N), int(0.15*N)]
+    train_test_val += [N - sum(train_test_val),]
+    train, test, validation = torch.utils.data.random_split(dataset, train_test_val)
+
+    trainloader = DataLoader(train, batch_size=1, shuffle=True,
+                                collate_fn=SynthCharDataset.collate_fn)
+    # valloader = DataLoader(validation, batch_size=1, shuffle=True,
+                                # collate_fn=SynthCharDataset.collate_fn)
+
+    model = CharClassifier(num_classes=len(dataset.alphabet)).double()#.cuda()
+
+    criterion = nn.NLLLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9) #
+
+    for epoch in epochs:
+        running_loss = 0.0
+        for i, data in enumerate(trainloader):
+            inputs, labels = data[0], data[1]
+            # print(f"type(inputs) = {type(inputs)}")
+            # print(f"inputs.shape = {inputs.shape}")
+            # print(f"inputs.dtype = {inputs.dtype}")
+            # print(f"type(labels) = {type(labels)}")
+            # print(f"labels.shape = {labels.shape}")
+            # print(f"labels.dtype = {labels.dtype}")
+
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = model(inputs)
+            # print(f"type(outputs) = {type(outputs)}")
+            # print(f"outputs.shape = {outputs.shape}")
+            # print(f"outputs.dtype = {outputs.dtype}")
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if True or i % 2000 == 1999:
+                print('[%d, %5d] loss: %.3f' %
+                      (epoch + 1, i + 1, running_loss / 2000))
+                running_loss = 0.0
+
+    print('Finished Training')
+
+
+
+
+class CharClassifier(nn.Module):
+
+    def __init__(self, num_classes):
+        super(CharClassifier, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3)
+        self.conv6 = nn.Conv2d(128, 256, kernel_size=3)
+        self.fc1 = nn.Linear(256 * 2 * 2, 128)
+        self.fc2 = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = F.max_pool2d(F.relu(self.conv1(x)), 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(F.relu(self.conv3(x)), 2)
+        x = F.relu(self.conv4(x))
+        x = F.max_pool2d(F.relu(self.conv5(x)), 2)
+        x = F.relu(self.conv6(x))
+
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+
+        return F.log_softmax(x, dim=1)
 
 
 if __name__ == '__main__':
