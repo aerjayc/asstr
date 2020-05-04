@@ -6,6 +6,7 @@ import h5py
 import os.path
 from pathlib import Path
 import matplotlib.pyplot as plt
+import time
 
 import torch
 import torch.optim as optim
@@ -18,6 +19,7 @@ import torch.utils.data
 from torch.utils.data import Dataset, DataLoader
 
 import image_proc
+import train_detector
 
 class SynthCharDataset(Dataset):
 
@@ -96,6 +98,8 @@ class SynthCharDataset(Dataset):
             batch[i] = cropped.transpose(2,0,1)   # CHW
         image.close()
 
+        # scale to [0,1]
+        batch /= 255.0
 
         # convert to tensor
         batch = torch.from_numpy(batch).double()
@@ -358,17 +362,34 @@ def getSample(f, entry_no, char_no, image_dir):
 #     train, test, validation = torch.utils.data.random_split(dataset, kwargs["split"])
 
 def main():
-    windows_path_prefix = "C:"
-    linux_path_prefix = "/mnt/A4B04DFEB04DD806"
+    home = False
+    if home:
+        windows_path_prefix = "C:"
+        linux_path_prefix = "/mnt/A4B04DFEB04DD806"
 
-    path_prefix = linux_path_prefix
-    img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
-    gt_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
-    char_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/chars'
+        path_prefix = linux_path_prefix
+        img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
+        gt_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
+        weight_dir = '/home/aerjay/Documents/thesis/weights'
+    else:
+        gt_path = "/home/eee198/Downloads/SynthText/gt_v7.3.mat"
+        img_dir = "/home/eee198/Downloads/SynthText/images"
 
+        weight_folder = 'initial'
+        weight_dir = "/home/eee198/Downloads/SynthText/weights/" + weight_folder
+        # weight_fname = None     # pretrained weights
+
+    # make weight_dir if it doesn't exist
+    Path(weight_dir).mkdir(parents=True, exist_ok=True)
+
+    cuda = False
     size = (64,64)
 
     epochs = range(1)
+
+    # transforms (Normalize to [-1,1])
+    transform = transforms.Compose([
+                    transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))])
 
     dataset = SynthCharDataset(gt_path, img_dir, size)
 
@@ -382,21 +403,29 @@ def main():
     # valloader = DataLoader(validation, batch_size=1, shuffle=True,
                                 # collate_fn=SynthCharDataset.collate_fn)
 
-    model = CharClassifier(num_classes=len(dataset.alphabet)).double()#.cuda()
+    model = CharClassifier(num_classes=len(dataset.alphabet)).double()
+    if cuda:
+        model = model.cuda()
 
     criterion = nn.NLLLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9) #
 
+    T_start = time.time()
     for epoch in epochs:
         running_loss = 0.0
         for i, data in enumerate(trainloader):
             inputs, labels = data[0], data[1]
+            if cuda:
+                inputs, labels = inputs.cuda(), labels.cuda()
             # print(f"type(inputs) = {type(inputs)}")
             # print(f"inputs.shape = {inputs.shape}")
             # print(f"inputs.dtype = {inputs.dtype}")
             # print(f"type(labels) = {type(labels)}")
             # print(f"labels.shape = {labels.shape}")
             # print(f"labels.dtype = {labels.dtype}")
+
+            # transforms
+            inputs = transform(inputs)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -411,12 +440,24 @@ def main():
             optimizer.step()
 
             # print statistics
+            running_loss = train_detector.print_statistics(running_loss, loss,
+                i, epoch, model=model, T_print=100, T_save=10000,
+                weight_dir=weight_dir)
             running_loss += loss.item()
-            if True or i % 2000 == 1999:
-                print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 2000))
-                running_loss = 0.0
+            # if i % 100 == 99:
+            #     print('[%d, %5d] loss: %.3f' %
+            #           (epoch + 1, i + 1, running_loss / 2000))
+            #     running_loss = 0.0
 
+            # # save weights
+            # if i % 10000 == 10000-1:
+            #     print(f'saving weights at {weight_fname}... ', end='')
+
+            #     print('done.')
+
+            # stopping criterion
+
+    T_end = time.time()
     print('Finished Training')
 
 
