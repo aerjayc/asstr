@@ -195,7 +195,8 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=Non
     if charBB_i.ndim == 2:  # if only one char
         charBB_i = np.array([charBB_i], dtype='float32')
 
-    breakpoints = getBreakpoints(txt)
+    if generate_affinity:
+        breakpoints = getBreakpoints(txt)
     # instances = txtToInstance(txt)
     # entire_string = ''.join(instances)
 
@@ -209,6 +210,8 @@ def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=Non
         if not (region_mask is None):
             pseudoGT_region += region_mask
 
+        if not generate_affinity:
+            continue
         # if prev char is not a breakpoint = if curr char same instance as prev
         if ((j-1) not in breakpoints) and (j > 0) and generate_affinity:
             if region_mask is None:         # if previous char (assuming same
