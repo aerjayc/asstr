@@ -84,7 +84,7 @@ class SynthCharDataset(Dataset):
                 break
 
             # crop + convert to numpy (H,W,C)
-            cropped = cropBB(image, charBB, fast=False).astype('float32')
+            cropped = cropBB(image, charBB, fast=True).astype('float32')
 
             # resize
             cropped = cv2.resize(cropped, dsize=self.size)  # numpy input
@@ -98,8 +98,10 @@ class SynthCharDataset(Dataset):
             batch[i] = cropped.transpose(2,0,1)   # CHW
         image.close()
 
-        # scale to [0,1]
-        batch /= 255.0
+        # scale to [-1,1]
+        batch /= 255.0  # [0,1]
+        batch -= 0.5    # [-0.5,0.5]
+        batch *= 2      # [-1,1]
 
         # convert to tensor
         batch = torch.from_numpy(batch).double()
@@ -124,7 +126,7 @@ class SynthCharDataset(Dataset):
         return imgs, chars
 
 def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
-    batch_size_limit=64, expand_coeff=0.3, contract_coeff=0.1):
+    batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
     N = min(len(gts), batch_size_limit) # batch size
 
     # turn h5py charBBs to np array
@@ -229,8 +231,10 @@ def cropBB(img, BB, size=None, fast=False):
     # crop
     if fast:
         BB = image_proc.order_points(BB)
-        i,j = BB[0][1], BB[0][0]
-        h,w = BB[2][1] - i, BB[2][0] - j
+        # i,j = BB[0][1], BB[0][0]
+        # h,w = BB[2][1] - i, BB[2][0] - j
+        j, i = np.min(BB, axis=0)
+        w, h = np.max(BB, axis=0) - np.min(BB, axis=0)
 
         cropped = image_proc.crop(img, i,j,h,w)
     else:
@@ -383,13 +387,9 @@ def main():
     Path(weight_dir).mkdir(parents=True, exist_ok=True)
 
     cuda = False
-    size = (64,64)
+    size = (32,32)
 
     epochs = range(1)
-
-    # transforms (Normalize to [-1,1])
-    transform = transforms.Compose([
-                    transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))])
 
     dataset = SynthCharDataset(gt_path, img_dir, size)
 
@@ -423,9 +423,6 @@ def main():
             # print(f"type(labels) = {type(labels)}")
             # print(f"labels.shape = {labels.shape}")
             # print(f"labels.dtype = {labels.dtype}")
-
-            # transforms
-            inputs = transform(inputs)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -492,6 +489,7 @@ class CharClassifier(nn.Module):
 
 
 if __name__ == '__main__':
+    main()
     """
 import numpy as np
 import train_classifier
@@ -509,6 +507,7 @@ dataset = train_classifier.SynthCharDataset(gt_path, img_dir, (100,100))
 
 r = dataset[0]
     """
+    """
     windows_path_prefix = "C:"
     linux_path_prefix = "/mnt/A4B04DFEB04DD806"
 
@@ -520,6 +519,7 @@ r = dataset[0]
     dataset = SynthCharDataset(gt_path, img_dir, (100,100))
 
     r = dataset[0]
+    """
     # classes = ['a', 'e', 'i', 'o', 'u']
     # simpleGenChar(10, img_dir, mat_dir, N_images=100)
     # genBalancedCharDataset(20, img_dir, mat_path, char_dir, classes=classes)
