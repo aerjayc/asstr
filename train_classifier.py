@@ -129,10 +129,26 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
     batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
     N = min(len(gts), batch_size_limit) # batch size
 
+    # filter faulty values
+    skip_indices = []
+    for i, charBB in enumerate(charBBs):
+        tl, br = np.min(charBB, axis=0), np.max(charBB, axis=0)
+        w, h = br - tl
+
+        # if BB exceeds image bounds
+        if br[0] >= img_wh[0] or br[1] >= img_wh[1]:
+            skip_indices.append(i)
+        # if BB dimensions <= 1
+        elif w <= 1 or h <= 1:
+            skip_indices.append(i)
+
     # turn h5py charBBs to np array
-    charBBs_np = np.zeros((len(charBBs),4,2))
+    charBBs_np = np.zeros((len(charBBs) - len(skip_indices),4,2))
+    j = 0
     for i,charBB in enumerate(charBBs):
-        charBBs_np[i] = charBB
+        if i not in skip_indices:
+            charBBs_np[j] = charBB
+            j += 1
     charBBs = charBBs_np
 
     # generate ``N_nonchars`` points not in wordBBs
@@ -170,8 +186,14 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
                                [-1, 1]])
 
             # ceil to prevent h=0 or w=0
-            charBBs[i] = np.ceil(charBBs[i] + noise)
-            charBBs[i] = np.clip(charBBs[i] + noise, 0, img_wh)
+            new_charBB = np.ceil(charBBs[i] + noise)
+            new_charBB = np.clip(new_charBB + noise, 0, img_wh)
+
+            # perturb only if dimensions > 1
+            tl, br = np.min(BB, axis=0), np.max(BB, axis=0)
+            new_width, new_height = br - tl
+            if (new_width > 1) and (new_height > 1):
+                charBBs[i] = new_charBB
 
     return charBBs, gts
 
@@ -231,10 +253,9 @@ def cropBB(img, BB, size=None, fast=False):
     # crop
     if fast:
         BB = image_proc.order_points(BB)
-        # i,j = BB[0][1], BB[0][0]
-        # h,w = BB[2][1] - i, BB[2][0] - j
         j, i = np.min(BB, axis=0)
-        w, h = np.max(BB, axis=0) - np.min(BB, axis=0)
+        # use ceil in w,h to prevent w=0 or h=0
+        w, h = np.ceil(np.max(BB, axis=0) - np.min(BB, axis=0))
 
         cropped = image_proc.crop(img, i,j,h,w)
     else:
