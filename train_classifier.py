@@ -460,7 +460,7 @@ def main():
             # print statistics
             running_loss = train_detector.print_statistics(running_loss, loss,
                 i, epoch, model=model, T_print=100, T_save=10000,
-                weight_dir=weight_dir)
+                T_start=T_start, weight_dir=weight_dir)
             running_loss += loss.item()
             # if i % 100 == 99:
             #     print('[%d, %5d] loss: %.3f' %
