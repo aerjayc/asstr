@@ -72,9 +72,6 @@ class SynthCharDataset(Dataset):
         # H,W = image.height, image.width
         C = 3   # channels
         N = len(chars)  # number of characters
-        # if N > self.batch_size_limit:
-            # N = self.batch_size_limit
-            # chars = chars[:N]
 
 
         # get the cropped chars
@@ -88,11 +85,6 @@ class SynthCharDataset(Dataset):
 
             # resize
             cropped = cv2.resize(cropped, dsize=self.size)  # numpy input
-
-            # if i == 10:
-            #     print(chars[i])
-            #     plt.imshow(cropped.astype('int32'))
-            #     plt.show()
 
             # append to batch
             batch[i] = cropped.transpose(2,0,1)   # CHW
@@ -321,38 +313,6 @@ def genBalancedCharDataset(N_max, img_dir, mat_path, char_dir, skip_existing=Tru
     print(distribution)
 
 
-def simpleGenChar(N, img_dir, mat_dir, N_images=850000, matboundary=50000):
-    # generate a sequence of N integers < 858750
-    for i in random.sample(range(N_images), N):
-        # determine matnum: i in gt_{matnum}.mat
-        matnum = int(i/50000)
-        j = i % matboundary
-
-        matpath = os.path.join(mat_dir, f"gt_{matnum}.mat")
-        # print(f"matpath = {matpath}") #
-
-        f = h5py.File(matpath, 'r')
-        string = "".join(image_proc.txtToInstance(f[f['txt'][j][0]]))
-        k = random.randint(0, len(string)-1)
-        # print(f"string = {string}\nk = {k}") #
-        char = string[k]
-        charBB = f[f['charBB'][j][0]][k]
-        print(f"char = {char}") #
-
-        imname = image_proc.u2ToStr(f[f['imnames'][j][0]])
-        img_path = os.path.join(img_dir, imname)
-        # print(f"img_path = {img_path}") #
-
-        cropped = getCroppedImage(img_path, charBB)
-
-        print("showing image...") #
-        plt.figure() #
-        plt.imshow(cropped, interpolation='nearest') #
-        plt.show() #
-
-        # yield cropped, char
-
-
 def getCroppedImage(img_path, coords, augment=False):
     if augment:
         # perform augmentation
@@ -367,26 +327,8 @@ def getCroppedImage(img_path, coords, augment=False):
     cropped = image_proc.perspectiveTransform(img, initial=coords)
     return cropped
 
-# given matfile, entry number, character number:
-# return image, character, image name
-def getSample(f, entry_no, char_no, image_dir):
-    imname = image_proc.u2ToStr(f[f['charBB'][entry_no][0]])
-    image_path = os.path.join(image_dir, imname)
 
-    charBB = f[f['charBB'][entry_no][0]][char_no]
-    image = getCroppedImage(image_path, charBB)
-
-    instances = image_proc.txtToInstance(f[f['txt'][entry_no][0]])
-    string = ''.join(instances)
-    char = string[char_no]
-
-    return image, char, imname
-
-# def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}):
-#     dataset = SynthCharDataset(gt_path, img_dir, **dataset_kwargs)
-#     train, test, validation = torch.utils.data.random_split(dataset, kwargs["split"])
-
-def main():
+def synthetic_classifier_training():
     home = False
     if home:
         windows_path_prefix = "C:"
@@ -438,21 +380,12 @@ def main():
             inputs, labels = data[0], data[1]
             if cuda:
                 inputs, labels = inputs.cuda(), labels.cuda()
-            # print(f"type(inputs) = {type(inputs)}")
-            # print(f"inputs.shape = {inputs.shape}")
-            # print(f"inputs.dtype = {inputs.dtype}")
-            # print(f"type(labels) = {type(labels)}")
-            # print(f"labels.shape = {labels.shape}")
-            # print(f"labels.dtype = {labels.dtype}")
 
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # forward + backward + optimize
             outputs = model(inputs)
-            # print(f"type(outputs) = {type(outputs)}")
-            # print(f"outputs.shape = {outputs.shape}")
-            # print(f"outputs.dtype = {outputs.dtype}")
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -462,23 +395,11 @@ def main():
                 i, epoch, model=model, T_print=100, T_save=10000,
                 T_start=T_start, weight_dir=weight_dir)
             running_loss += loss.item()
-            # if i % 100 == 99:
-            #     print('[%d, %5d] loss: %.3f' %
-            #           (epoch + 1, i + 1, running_loss / 2000))
-            #     running_loss = 0.0
-
-            # # save weights
-            # if i % 10000 == 10000-1:
-            #     print(f'saving weights at {weight_fname}... ', end='')
-
-            #     print('done.')
 
             # stopping criterion
 
     T_end = time.time()
     print('Finished Training')
-
-
 
 
 class CharClassifier(nn.Module):
@@ -510,37 +431,7 @@ class CharClassifier(nn.Module):
 
 
 if __name__ == '__main__':
-    main()
-    """
-import numpy as np
-import train_classifier
-from importlib import reload
-
-windows_path_prefix = "C:"
-linux_path_prefix = "/mnt/A4B04DFEB04DD806"
-
-path_prefix = linux_path_prefix
-img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
-gt_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
-char_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/chars'
-
-dataset = train_classifier.SynthCharDataset(gt_path, img_dir, (100,100))
-
-r = dataset[0]
-    """
-    """
-    windows_path_prefix = "C:"
-    linux_path_prefix = "/mnt/A4B04DFEB04DD806"
-
-    path_prefix = linux_path_prefix
-    img_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/SynthText'
-    gt_path = path_prefix + '/Users/Aerjay/Downloads/SynthText/gt_v7.3.mat'
-    char_dir = path_prefix + '/Users/Aerjay/Downloads/SynthText/chars'
-
-    dataset = SynthCharDataset(gt_path, img_dir, (100,100))
-
-    r = dataset[0]
-    """
+    pass
     # classes = ['a', 'e', 'i', 'o', 'u']
     # simpleGenChar(10, img_dir, mat_dir, N_images=100)
     # genBalancedCharDataset(20, img_dir, mat_path, char_dir, classes=classes)
