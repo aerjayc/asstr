@@ -23,9 +23,12 @@ from torch.utils.data import Dataset, DataLoader
 import image_proc
 import train_detector
 
+ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
+
 class SynthCharDataset(Dataset):
 
-    def __init__(self, gt_path, img_dir, size, batch_size_limit=64, augment=True):
+    def __init__(self, gt_path, img_dir, size, batch_size_limit=64,
+                 augment=True, shuffle=True):
         # inherit __init__() of Dataset class
         super(SynthCharDataset).__init__()
 
@@ -35,11 +38,12 @@ class SynthCharDataset(Dataset):
         self.size = size
         self.batch_size_limit = batch_size_limit
         self.augment = augment
+        self.shuffle = shuffle
 
         self.f = h5py.File(gt_path, 'r')
         self.length = len(self.f['imnames'])
 
-        self.alphabet = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
+        self.alphabet = ALPHABET
 
     def __len__(self):
         return self.length
@@ -67,10 +71,21 @@ class SynthCharDataset(Dataset):
         # get chars (ground truth)
         chars = list("".join(image_proc.txtToInstance(txts)))
 
+
+        # convert charBBs (which is h5py) to numpy
+        charBBs = h5py_to_numpy(charBBs)
+
+        # filter faulty values
+        charBBs = filter_BBs(charBBs, img_wh)
+
         # pepper in some nonchars
         if self.augment:
+            # Note: BB_augment is forced to shuffle_in_unison if nonchar=True
             charBBs, chars = BB_augment(charBBs, wordBBs, chars, (W,H),
-                                batch_size_limit=self.batch_size_limit)
+                                batch_size_limit=self.batch_size_limit,
+                                shuffle=self.shuffle)
+        elif self.shuffle:
+            shuffle_in_unison(charBBs, gts)
 
         # H,W = image.height, image.width
         C = 3   # channels
@@ -172,42 +187,60 @@ class ICDAR2013Dataset(Dataset):
         return img, charBBs, chars
 
 
-def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1,
-    batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
-    N = min(len(gts), batch_size_limit) # batch size
-
-    # filter faulty values
-    skip_indices = []
-    for i, charBB in enumerate(charBBs):
-        tl, br = np.min(charBB, axis=0), np.max(charBB, axis=0)
-        w, h = br - tl
+def filter_BBs(BBs, img_wh):
+    """Filter BBs if they go out of the bounds of the image
+        or if they have dimension <= 1
+    Args:
+        BBs (numpy.ndarray): a N x 4 x 2 array of bounding box coordinates
+        img_wh (2-tuple): a tuple (W, H) where W and H are the width and height
+            (respectively) of the original image
+    """
+    skip_mask = np.ones(len(BBs), np.bool)
+    for i, BB in enumerate(BBs):
+        w, h = image_proc.get_width_height(BB)
 
         # if BB exceeds image bounds
-        if br[0] >= img_wh[0] or br[1] >= img_wh[1]:
-            skip_indices.append(i)
+        if (br[0] >= img_wh[0]) or (br[1] >= img_wh[1]):
+            skip_mask[i] = 0
         # if BB dimensions <= 1
-        elif w <= 1 or h <= 1:
-            skip_indices.append(i)
+        elif (w <= 1) or (h <= 1):
+            skip_mask[i] = 0
 
-    # turn h5py charBBs to np array
-    charBBs_np = np.zeros((len(charBBs) - len(skip_indices),4,2))
-    j = 0
-    for i,charBB in enumerate(charBBs):
-        if i not in skip_indices:
-            charBBs_np[j] = charBB
-            j += 1
-    charBBs = charBBs_np
+    return BBs[mask]
 
-    # generate ``N_nonchars`` points not in wordBBs
-    N_nonchars = int(fraction_nonchar*N)
-    noncharBBs = genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10)
+def h5py_to_numpy(h5):
+    """Convert h5py array of numpy arrays to a pure numpy array
+    Args:
+        h5 (h5py object): an h5py array of numpy arrays
+    """
+    sample = h5[0]
 
-    # combine nonchars with chars
-    if noncharBBs:
-        charBBs = np.concatenate(charBBs, noncharBBs)
-        gts += [None]*N_nonchars
+    numpy_arr = np.array(len(h5), *sample.shape, dtype=sample.dtype)
+    for i, element in enumerate(h5):
+        numpy_arr[i] = element
 
-    shuffle_in_unison(charBBs, gts)
+    return numpy_arr
+
+def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False,
+               batch_size_limit=None, fraction_nonchar=0.1, expand_coeff=0.2,
+               contract_coeff=0.2):
+    if batch_size_limit:
+        N = min(len(gts), batch_size_limit) # batch size
+
+    if nonchars:
+        # generate ``N_nonchars`` points not in wordBBs
+        N_nonchars = int(fraction_nonchar*N)
+        noncharBBs = genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10)
+
+        # combine nonchars with chars
+        if noncharBBs:
+            charBBs = np.concatenate(charBBs, noncharBBs)
+            gts += [None]*N_nonchars
+
+        shuffle_in_unison(charBBs, gts)
+
+    elif shuffle:
+        shuffle_in_unison(charBBs, gts)
 
     # limit the inputs to ``batch_size_limit``
     if len(gts) >= batch_size_limit:
@@ -215,11 +248,9 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1
         gts = gts[:N]
 
     # perturb each coordinate in charBB, biased to increase the area
-    for i,BB in enumerate(charBBs):
-        if augment and gts[i]:  # augmentation
-            # get longest side length
-            c_BB = image_proc.get_containing_rect(BB)
-            w_c, h_c = c_BB[2] - c_BB[0]
+    for i, BB in enumerate(charBBs):
+        if gts[i]:  # augmentation
+            w_c, h_c = image_proc.get_width_height(BB)
 
             low_x, low_y = -1*contract_coeff*w_c, -1*contract_coeff*h_c
             high_x, high_y = expand_coeff*w_c, expand_coeff*h_c
@@ -237,8 +268,7 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1
             new_charBB = np.clip(new_charBB + noise, 0, img_wh)
 
             # perturb only if dimensions > 1
-            tl, br = np.min(BB, axis=0), np.max(BB, axis=0)
-            new_width, new_height = br - tl
+            new_width, new_height = image_proc.get_width_height(BB)
             if (new_width > 1) and (new_height > 1):
                 charBBs[i] = new_charBB
 
