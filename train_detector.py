@@ -238,7 +238,7 @@ def print_statistics(running_loss, loss, i, epoch, model=None,
 
     # save every T_save minibatches
     if i % T_save == T_save-1:
-        if not (weight_dir is None):
+        if weight_dir is not None:
             if weight_fname_template is None:
                 weight_fname_template = "w_%d.pth"
                 weight_fname_args = (i+1,)
@@ -249,7 +249,8 @@ def print_statistics(running_loss, loss, i, epoch, model=None,
             print(f"\nsaving at {i+1}-th batch")
             torch.save(model.state_dict(), weight_path)
             T_end = time.time()
-            print(f"\nElapsed time: {T_end-T_start}")
+            if T_start is not None:
+                print(f"\nElapsed time: {T_end-T_start}")
 
     return running_loss
 
