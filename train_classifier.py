@@ -379,7 +379,7 @@ def main():
         gt_path = "/home/eee198/Downloads/SynthText/gt_v7.3.mat"
         img_dir = "/home/eee198/Downloads/SynthText/images"
 
-        weight_folder = 'initial'
+        weight_folder = 'classifier/synth'
         weight_dir = "/home/eee198/Downloads/SynthText/weights/" + weight_folder
         # weight_fname = None     # pretrained weights
 
@@ -387,7 +387,7 @@ def main():
     Path(weight_dir).mkdir(parents=True, exist_ok=True)
 
     cuda = False
-    size = (32,32)
+    size = (64,64)
 
     epochs = range(1)
 
