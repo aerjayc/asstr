@@ -67,7 +67,8 @@ class SynthCharDataset(Dataset):
 
         # pepper in some nonchars
         if self.augment:
-            charBBs, chars = BB_augment(charBBs, wordBBs, chars, (W,H))
+            charBBs, chars = BB_augment(charBBs, wordBBs, chars, (W,H),
+                                batch_size_limit=self.batch_size_limit)
 
         # H,W = image.height, image.width
         C = 3   # channels
@@ -117,7 +118,7 @@ class SynthCharDataset(Dataset):
 
         return imgs, chars
 
-def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
+def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1,
     batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
     N = min(len(gts), batch_size_limit) # batch size
 
@@ -161,7 +162,7 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, fraction_nonchar=0.1,
 
     # perturb each coordinate in charBB, biased to increase the area
     for i,BB in enumerate(charBBs):
-        if gts[i]:  # augmentation
+        if augment and gts[i]:  # augmentation
             # get longest side length
             c_BB = image_proc.get_containing_rect(BB)
             w_c, h_c = c_BB[2] - c_BB[0]
