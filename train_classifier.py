@@ -3,6 +3,8 @@ import cv2
 import PIL
 import random
 import h5py
+import pandas as pd
+import os
 import os.path
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -117,6 +119,58 @@ class SynthCharDataset(Dataset):
                 chars = torch.cat((chars, sample[1]))
 
         return imgs, chars
+
+
+class ICDAR2013Dataset(Dataset):
+
+    def __init__(self, gt_dir, img_dir):
+        # inherit  __init__() of Dataset class
+        super(ICDAR2013Dataset).__init__()
+
+        self.gt_dir = gt_dir
+        self.img_dir = img_dir
+
+        img_exts = ['.jpg', '.jpeg', '.png', '.bmp']
+        self.img_names = []
+        # self.img_paths = []
+        _, _, files = next(os.walk(img_dir))
+        for file in sorted(files):
+            if os.path.splitext(file)[1].lower() in img_exts:
+                self.img_names.append(file)
+                # path_name = os.path.join(img_dir, file)
+                # self.img_paths.append(path_name)
+
+    def __len__(self):
+        return 229# len(self.img_names)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_name = self.img_names[idx]
+        gt_name = f"{img_name[:3]}_GT.txt"
+        img_path = os.path.join(self.img_dir, img_name)
+        gt_path = os.path.join(self.gt_dir, gt_name)
+
+        img = PIL.Image.open(img_path)
+
+        headers = ['R', 'G' ,'B' ,  # RGB values
+                   'x0', 'y0',      # center
+                   'x1', 'y1',      # top left
+                   'x2', 'y2',      # bottom right
+                   'character']
+        gt_df = pd.read_csv(gt_path, names=headers, comment='#',
+                            delim_whitespace=True, doublequote=False)
+
+        charBBs = gt_df[['x1', 'y1',
+                         'x2', 'y1',
+                         'x2', 'y2',
+                         'x1', 'y2']].to_numpy().reshape(-1,4,2)
+
+        chars = gt_df['character']
+
+        return img, charBBs, chars
+
 
 def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1,
     batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
