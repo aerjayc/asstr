@@ -172,6 +172,67 @@ class ICDAR2013Dataset(Dataset):
         return img, charBBs, chars
 
 
+class ICDAR2013CharDataset(ICDAR2013Dataset):
+
+    def __init__(self, gt_dir, img_dir, augment=True, size=(64,64),
+                 batch_size_limit=None):
+        self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
+
+        self.augment = augment
+        self.size = size
+
+        if batch_size_limit:
+            self.batch_size_limit = batch_size_limit
+        else:
+            self.batch_size_limit = -1
+
+    def __len__(self):
+        return len(self.raw_dataset)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img, charBBs, chars = self.raw_dataset[idx]
+        W, H = img.width, img.height
+
+        if self.augment:    # Note: does a lot of unnecessary stuff
+            charBBs, chars = BB_augment(charBBs, None, chars, (W,H))
+
+        C = 3   # channels
+        N = max(len(chars), self.batch_size_limit)
+
+        # get the cropped chars
+        batch = np.zeros((N,C,*self.size))
+        for i, charBB in enumerate(charBBs):
+            if i >= self.batch_size_limit:
+                break
+
+            # crop + convert to numpy (H,W,C)
+            cropped = cropBB(img, charBB, fast=True).astype('float32')
+
+            # resize
+            cropped = cv2.resize(cropped, dsize=self.size)
+
+            # append to batch
+            batch[i] = cropped.transpose(2,0,1) # CHW
+        img.close()
+
+        # scale to [-1,1]
+        batch /= 255.0  # [0,1]
+        batch -= 0.5    # [-0.5,0.5]
+        batch *= 2      # [-1,1]
+
+        # convert to tensor
+        batch = torch.from_numpy(batch)
+
+        # convert chars to stack of one-hot vectors
+        onehot_chars = string_to_onehot(chars, alphabet=self.alphabet,
+                                    to_onehot=False).long()
+
+        return batch, onehot_chars
+
+
 def BB_augment(charBBs, wordBBs, gts, img_wh, augment=True, fraction_nonchar=0.1,
     batch_size_limit=64, expand_coeff=0.2, contract_coeff=0.2):
     N = min(len(gts), batch_size_limit) # batch size
