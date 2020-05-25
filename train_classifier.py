@@ -76,7 +76,7 @@ class SynthCharDataset(Dataset):
         charBBs = h5py_to_numpy(charBBs)
 
         # filter faulty values
-        charBBs = filter_BBs(charBBs, img_wh)
+        charBBs, chars = filter_BBs(charBBs, chars, (H,W))
 
         # pepper in some nonchars
         if self.augment:
@@ -187,17 +187,20 @@ class ICDAR2013Dataset(Dataset):
         return img, charBBs, chars
 
 
-def filter_BBs(BBs, img_wh):
+def filter_BBs(BBs, gts, img_wh):
     """Filter BBs if they go out of the bounds of the image
         or if they have dimension <= 1
     Args:
         BBs (numpy.ndarray): a N x 4 x 2 array of bounding box coordinates
+        gts (list): a list with the same length as BBs
         img_wh (2-tuple): a tuple (W, H) where W and H are the width and height
             (respectively) of the original image
     """
     skip_mask = np.ones(len(BBs), np.bool)
+    correct_gts = []
     for i, BB in enumerate(BBs):
-        w, h = image_proc.get_width_height(BB)
+        tl, tr, br, bl = image_proc.get_containing_rect(BB)
+        w, h = br - tl
 
         # if BB exceeds image bounds
         if (br[0] >= img_wh[0]) or (br[1] >= img_wh[1]):
@@ -205,8 +208,11 @@ def filter_BBs(BBs, img_wh):
         # if BB dimensions <= 1
         elif (w <= 1) or (h <= 1):
             skip_mask[i] = 0
+        # if no problems
+        else:
+            correct_gts.append(gts[i])
 
-    return BBs[mask]
+    return BBs[skip_mask], correct_gts
 
 def h5py_to_numpy(h5):
     """Convert h5py array of numpy arrays to a pure numpy array
@@ -215,13 +221,13 @@ def h5py_to_numpy(h5):
     """
     sample = h5[0]
 
-    numpy_arr = np.array(len(h5), *sample.shape, dtype=sample.dtype)
+    numpy_arr = np.zeros([len(h5), *sample.shape], dtype=sample.dtype)
     for i, element in enumerate(h5):
         numpy_arr[i] = element
 
     return numpy_arr
 
-def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False,
+def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False, shuffle=True,
                batch_size_limit=None, fraction_nonchar=0.1, expand_coeff=0.2,
                contract_coeff=0.2):
     if batch_size_limit:
