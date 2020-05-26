@@ -511,6 +511,63 @@ def getCroppedImage(img_path, coords, augment=False):
     return cropped
 
 
+def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
+               valloader=None, cuda=True, per_epoch=True):
+    T_start = time.time()
+    for epoch in epochs:
+        running_loss = 0.0
+        for i, data in enumerate(dataloader):
+            inputs, labels = data[0], data[1]
+            if cuda:
+                inputs, labels = inputs.cuda(), labels.cuda()
+
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            if per_epoch:
+                running_loss += loss.item()
+            else:
+                # print statistics on a per batch basis
+                running_loss = train_detector.print_statistics(running_loss,
+                    loss, i, epoch, model=model, T_print=100, T_save=10000,
+                    T_start=T_start, weight_dir=weight_dir)
+
+        if not per_epoch:
+            continue
+
+        # check validation set
+        if valloader:
+            pass
+
+        # print statistics every epoch
+        print('%d)\tloss: %.5f' % (epoch + 1, running_loss))
+
+        # save every epoch_save epochs
+        if epoch_save and epoch % epoch_save == epoch_save-1:
+            if weight_dir is not None:
+                weight_fname = f'w_{epoch}.pth'
+                weight_path = os.path.join(weight_dir, weight_fname)
+
+                print(f'\nSaving at {i+1}-th batch')
+                torch.save(model.state_dict(), weight_path)
+                T_end = time.time()
+                print(f'Elapsed time: {T_end-T_start}\n')
+            else:
+                print(f'Not saving weights because weight_dir={weight_dir}')
+
+        # stopping criterion
+
+
+    T_end = time.time()
+    print(f'Finished Training ({T_end-T_start} secs).')
+
+
 def synthetic_classifier_training():
     home = False
     if home:
@@ -556,33 +613,8 @@ def synthetic_classifier_training():
     criterion = nn.NLLLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9) #
 
-    T_start = time.time()
-    for epoch in epochs:
-        running_loss = 0.0
-        for i, data in enumerate(trainloader):
-            inputs, labels = data[0], data[1]
-            if cuda:
-                inputs, labels = inputs.cuda(), labels.cuda()
-
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward + backward + optimize
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            # print statistics
-            running_loss = train_detector.print_statistics(running_loss, loss,
-                i, epoch, model=model, T_print=100, T_save=10000,
-                T_start=T_start, weight_dir=weight_dir)
-            running_loss += loss.item()
-
-            # stopping criterion
-
-    T_end = time.time()
-    print('Finished Training')
+    train_loop(trainloader, model, optimizer, criterion, epochs, weight_dir,
+               per_epoch=False)
 
 
 class CharClassifier(nn.Module):
