@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import PIL
+import scipy.ndimage
 import random
 import h5py
 import pandas as pd
@@ -28,7 +29,7 @@ ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
 class SynthCharDataset(Dataset):
 
     def __init__(self, gt_path, img_dir, size, batch_size_limit=64,
-                 augment=True, shuffle=True):
+                 augment=True, shuffle=True, normalize=True):
         # inherit __init__() of Dataset class
         super(SynthCharDataset).__init__()
 
@@ -39,6 +40,7 @@ class SynthCharDataset(Dataset):
         self.batch_size_limit = batch_size_limit
         self.augment = augment
         self.shuffle = shuffle
+        self.normalize = normalize
 
         self.f = h5py.File(gt_path, 'r')
         self.length = len(self.f['imnames'])
@@ -107,10 +109,11 @@ class SynthCharDataset(Dataset):
             batch[i] = cropped.transpose(2,0,1)   # CHW
         image.close()
 
-        # scale to [-1,1]
-        batch /= 255.0  # [0,1]
-        batch -= 0.5    # [-0.5,0.5]
-        batch *= 2      # [-1,1]
+        if self.normalize:
+            # scale to [-1,1]
+            batch /= 255.0  # [0,1]
+            batch -= 0.5    # [-0.5,0.5]
+            batch *= 2      # [-1,1]
 
         # convert to tensor
         batch = torch.from_numpy(batch).double()
@@ -189,7 +192,7 @@ class ICDAR2013Dataset(Dataset):
 class ICDAR2013CharDataset(ICDAR2013Dataset):
 
     def __init__(self, gt_dir, img_dir, augment=True, size=(64,64),
-                 batch_size_limit=None, shuffle=True):
+                 batch_size_limit=None, shuffle=True, normalize=True):
         self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
 
         self.augment = augment
@@ -197,6 +200,7 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
 
         self.batch_size_limit = batch_size_limit
         self.shuffle = shuffle
+        self.normalize = normalize
 
         self.alphabet = ALPHABET
 
@@ -216,6 +220,7 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
         # pepper in some nonchars
         if self.augment:
             charBBs, chars = BB_augment(charBBs, None, chars, (W,H),
+                                contract_coeff=0.1, expand_coeff=0.3,
                                 batch_size_limit=self.batch_size_limit,
                                 shuffle=self.shuffle)
         else:
@@ -232,14 +237,25 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
         batch = np.zeros((N,C,*self.size))
         for i, charBB in enumerate(charBBs):
             # crop + convert to numpy (H,W,C)
-            cropped = cropBB(img, charBB, fast=True).astype('float32')
+            cropped = cropBB(img, charBB, fast=False).astype('float32')
 
             # resize
             cropped = cv2.resize(cropped, dsize=self.size)
 
+            # augment further
+            if self.augment:
+                angle = transforms.RandomRotation.get_params([-45, 45])
+                cropped = scipy.ndimage.rotate(cropped, angle, reshape=False)
+
             # append to batch
             batch[i] = cropped.transpose(2,0,1) # CHW
         img.close()
+
+        if self.normalize:
+            # scale to [-1,1]
+            batch /= 255.0  # [0,1]
+            batch -= 0.5    # [-0.5,0.5]
+            batch *= 2      # [-1,1]
 
         # convert to tensor
         batch = torch.from_numpy(batch)
