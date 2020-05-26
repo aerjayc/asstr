@@ -105,6 +105,11 @@ class SynthCharDataset(Dataset):
             # resize
             cropped = cv2.resize(cropped, dsize=self.size)  # numpy input
 
+            # augment further
+            if self.augment:
+                angle = transforms.RandomRotation.get_params([-45, 45])
+                cropped = scipy.ndimage.rotate(cropped, angle, reshape=False)
+
             # append to batch
             batch[i] = cropped.transpose(2,0,1)   # CHW
         image.close()
