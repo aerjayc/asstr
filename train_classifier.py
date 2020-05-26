@@ -116,7 +116,7 @@ class SynthCharDataset(Dataset):
             batch *= 2      # [-1,1]
 
         # convert to tensor
-        batch = torch.from_numpy(batch).double()
+        batch = torch.from_numpy(batch)#.double()
 
         # convert chars to stack of one-hot vectors
         onehot_chars = string_to_onehot(chars, alphabet=self.alphabet,
