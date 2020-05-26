@@ -569,18 +569,39 @@ def crop(tensor, i,j,h,w, axes=[0,1]):
     tensor = tensor.transpose(np.argsort(axis_order))
     return tensor
 
-def get_containing_rect(BB):
-    """Returns the BB coordinates of the rectangle that
-        circumscribes the
-    """
-    BB = order_points(BB)
+def get_containing_rect(points):
+    """Get the BB coordinates of the smallest rectangle containing ``points``
 
-    tl = np.min(BB, axis=0)
-    br = np.max(BB, axis=0)
+    Finds the smallest horizontal rectangle containing
+    a set of points given by ``points``.
+
+    Args:
+        points (numpy.ndarray): a N x 2 numpy array
+    """
+    points = order_points(points)
+
+    tl = np.min(points, axis=0)
+    br = np.max(points, axis=0)
     tr = np.array([br[0], tl[1]])
     bl = np.array([tl[0], br[1]])
 
     return np.array([tl, tr, br, bl])
+
+def get_width_height(points):
+    """Get the dimensions of the smallest rectangle containing ``points``.
+
+    Finds the smallest horizontal rectangle that contains
+    the coordinates given by ``points``.
+
+    Args:
+        points (numpy.ndarray): a N x 2 numpy array
+    """
+    top_left = np.min(points, axis=0)
+    bottom_right = np.max(points, axis=0)
+
+    width, height = bottom_right - top_left
+
+    return width, height
 
 
 if __name__ == '__main__':
