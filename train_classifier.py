@@ -156,7 +156,7 @@ class ICDAR2013Dataset(Dataset):
                 # self.img_paths.append(path_name)
 
     def __len__(self):
-        return 229# len(self.img_names)
+        return len(self.img_names)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -187,7 +187,6 @@ class ICDAR2013Dataset(Dataset):
         return img, charBBs, chars
 
 
-<<<<<<< HEAD
 class ICDAR2013CharDataset(ICDAR2013Dataset):
 
     def __init__(self, gt_dir, img_dir, augment=True, size=(64,64),
