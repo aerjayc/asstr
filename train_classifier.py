@@ -66,7 +66,7 @@ class SynthCharDataset(Dataset):
         # get the idx-th image
         imgpath = os.path.join(self.img_dir, imgname)
         image = PIL.Image.open(imgpath)
-        H,W = image.height, image.width
+        W,H = image.width, image.height
 
         # get chars (ground truth)
         chars = list("".join(image_proc.txtToInstance(txts)))
@@ -76,7 +76,7 @@ class SynthCharDataset(Dataset):
         charBBs = h5py_to_numpy(charBBs)
 
         # filter faulty values
-        charBBs, chars = filter_BBs(charBBs, chars, (H,W))
+        charBBs, chars = filter_BBs(charBBs, chars, (W,H))
 
         # pepper in some nonchars
         if self.augment:
@@ -84,20 +84,19 @@ class SynthCharDataset(Dataset):
             charBBs, chars = BB_augment(charBBs, wordBBs, chars, (W,H),
                                 batch_size_limit=self.batch_size_limit,
                                 shuffle=self.shuffle)
-        elif self.shuffle:
-            shuffle_in_unison(charBBs, gts)
+        else:
+            if self.shuffle:
+                shuffle_in_unison(charBBs, chars)
 
-        # H,W = image.height, image.width
+            charBBs = charBBs[:self.batch_size_limit]
+            chars = chars[:self.batch_size_limit]
+
         C = 3   # channels
         N = len(chars)  # number of characters
-
 
         # get the cropped chars
         batch = np.zeros((N,C,*self.size))
         for i, charBB in enumerate(charBBs):
-            if i >= self.batch_size_limit:
-                break
-
             # crop + convert to numpy (H,W,C)
             cropped = cropBB(image, charBB, fast=True).astype('float32')
 
@@ -190,16 +189,16 @@ class ICDAR2013Dataset(Dataset):
 class ICDAR2013CharDataset(ICDAR2013Dataset):
 
     def __init__(self, gt_dir, img_dir, augment=True, size=(64,64),
-                 batch_size_limit=None):
+                 batch_size_limit=None, shuffle=True):
         self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
 
         self.augment = augment
         self.size = size
 
-        if batch_size_limit:
-            self.batch_size_limit = batch_size_limit
-        else:
-            self.batch_size_limit = -1
+        self.batch_size_limit = batch_size_limit
+        self.shuffle = shuffle
+
+        self.alphabet = ALPHABET
 
     def __len__(self):
         return len(self.raw_dataset)
@@ -211,18 +210,27 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
         img, charBBs, chars = self.raw_dataset[idx]
         W, H = img.width, img.height
 
-        if self.augment:    # Note: does a lot of unnecessary stuff
-            charBBs, chars = BB_augment(charBBs, None, chars, (W,H))
+        # filter faulty values
+        charBBs, chars = filter_BBs(charBBs, chars, (W,H))
+
+        # pepper in some nonchars
+        if self.augment:
+            charBBs, chars = BB_augment(charBBs, None, chars, (W,H),
+                                batch_size_limit=self.batch_size_limit,
+                                shuffle=self.shuffle)
+        else:
+            if self.shuffle:
+                shuffle_in_unison(charBBs, chars)
+
+            charBBs = charBBs[:self.batch_size_limit]
+            chars = chars[:self.batch_size_limit]
 
         C = 3   # channels
-        N = max(len(chars), self.batch_size_limit)
+        N = len(chars)
 
         # get the cropped chars
         batch = np.zeros((N,C,*self.size))
         for i, charBB in enumerate(charBBs):
-            if i >= self.batch_size_limit:
-                break
-
             # crop + convert to numpy (H,W,C)
             cropped = cropBB(img, charBB, fast=True).astype('float32')
 
@@ -233,17 +241,12 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
             batch[i] = cropped.transpose(2,0,1) # CHW
         img.close()
 
-        # scale to [-1,1]
-        batch /= 255.0  # [0,1]
-        batch -= 0.5    # [-0.5,0.5]
-        batch *= 2      # [-1,1]
-
         # convert to tensor
         batch = torch.from_numpy(batch)
 
         # convert chars to stack of one-hot vectors
         onehot_chars = string_to_onehot(chars, alphabet=self.alphabet,
-                                    to_onehot=False).long()
+                                    to_onehot=False)#.long()
 
         return batch, onehot_chars
 
@@ -257,6 +260,7 @@ def filter_BBs(BBs, gts, img_wh):
         img_wh (2-tuple): a tuple (W, H) where W and H are the width and height
             (respectively) of the original image
     """
+    img_w, img_h = img_wh
     skip_mask = np.ones(len(BBs), np.bool)
     correct_gts = []
     for i, BB in enumerate(BBs):
@@ -264,7 +268,7 @@ def filter_BBs(BBs, gts, img_wh):
         w, h = br - tl
 
         # if BB exceeds image bounds
-        if (br[0] >= img_wh[0]) or (br[1] >= img_wh[1]):
+        if (br[0] >= img_w) or (br[1] >= img_h):
             skip_mask[i] = 0
         # if BB dimensions <= 1
         elif (w <= 1) or (h <= 1):
@@ -291,13 +295,24 @@ def h5py_to_numpy(h5):
 def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False, shuffle=True,
                batch_size_limit=None, fraction_nonchar=0.1, expand_coeff=0.2,
                contract_coeff=0.2):
-    if batch_size_limit:
+    if batch_size_limit is None:
+        N = len(gts)
+    elif batch_size_limit <= 0:
+        N = len(gts)
+        batch_size_limit = None
+    else:
         N = min(len(gts), batch_size_limit) # batch size
 
     if nonchars:
+        assert fraction_nonchar < 1,\
+               f"fraction_nonchar = {fraction_nonchar}; must be < 1"
+
         # generate ``N_nonchars`` points not in wordBBs
         N_nonchars = int(fraction_nonchar*N)
         noncharBBs = genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10)
+
+        shuffle_in_unison(charBBs, gts)
+        charBBs, gts = charBBs[:N-N_nonchars], gts[:N-N_nonchars]
 
         # combine nonchars with chars
         if noncharBBs:
@@ -310,9 +325,9 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False, shuffle=True,
         shuffle_in_unison(charBBs, gts)
 
     # limit the inputs to ``batch_size_limit``
-    if len(gts) >= batch_size_limit:
-        charBBs = charBBs[:N]
-        gts = gts[:N]
+    # Note: list[:None] == list
+    charBBs = charBBs[:batch_size_limit]
+    gts = gts[:batch_size_limit]
 
     # perturb each coordinate in charBB, biased to increase the area
     for i, BB in enumerate(charBBs):
