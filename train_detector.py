@@ -16,6 +16,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
 from craft.craft import CRAFT
+from train_classifier import ICDAR2013Dataset
 
 import time
 
@@ -185,6 +186,68 @@ class SynthCharMapDataset(Dataset):
                                         dsize=(w_hgt, h_hgt))).cuda()
 
         return torch.utils.data._utils.collate.default_collate(batch_resized)
+
+
+class ICDAR2013MapDataset(ICDAR2013Dataset):
+
+    def __init__(self, gt_dir, img_dir, size=None, cuda=True,
+                 character_map=True, direction_map=False, augment=True):
+        self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
+        self.character_map = character_map
+        self.direction_map = direction_map
+        self.augment = augment
+
+        self.size = size
+        if cuda:
+            self.dtype = torch.cuda.FloatTensor
+        else:
+            self.dtype = torch.FloatTensor
+
+    def __len__(self):
+        return len(self.raw_dataset)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img, charBBs, chars = self.raw_dataset[idx]
+        img_shape = img.height, img.width
+
+        # get the heatmap GTs
+        if self.character_map:
+            char_map, aff_map = image_proc.genPseudoGT(charBBs, chars, img_shape,
+                                        generate_affinity=False)#,
+                                            # template=self.gaussian_template)
+        if self.direction_map:
+            cos_map, sin_map = genDirectionGT(charBBs, img_shape)#,
+                                            # template=self.direction_template)
+
+        # combine gts into a single tensor
+        gt = None
+        if self.character_map:
+            gt = char_map[None, ...]
+        if self.direction_map:
+            dir_map = np.stack((cos_map, sin_map))
+            if gt is None:
+                gt = dir_map
+            else:
+                gt = np.concatenate((gt, dir_map))
+
+        if self.augment:
+            img, gt = image_proc.augment(img, gt, size=self.size, halve_gt=True)
+        else:
+            # convert to torch tensor
+            img = torch.Tensor(np.array(img)).permute(2,0,1)  # CHW
+            gt = torch.Tensor(gt)                   # CHW
+            gt = F.interpolate(gt[None,...], scale_factor=0.5)[0]
+            # img, gt = image_proc.augment(img, gt, size=self.size, halve_gt=True,
+                            # scale=(1.0,1.0),ratio=(1,1),degrees=[0,0])
+        img = img.type(self.dtype) / 255.0  # CHW
+        gt = gt.permute(1,2,0).type(self.dtype) # resized, CHW->HWC
+
+        return img, gt
+
+
 
 def max_shape(arr_tensors):
     shape = np.zeros((len(arr_tensors), arr_tensors[0].dim()))
