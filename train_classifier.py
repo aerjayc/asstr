@@ -375,6 +375,9 @@ def BB_augment(charBBs, wordBBs, gts, img_wh, nonchars=False, shuffle=True,
             if (new_width > 1) and (new_height > 1):
                 charBBs[i] = new_charBB
 
+    # filter out faulty values
+    charBBs, gts = filter_BBs(charBBs, gts, img_wh)
+
     return charBBs, gts
 
 def genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10):
@@ -521,50 +524,69 @@ def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
     T_start = time.time()
     for epoch in epochs:
         running_loss = 0.0
-        for i, data in enumerate(dataloader):
-            inputs, labels = data[0], data[1]
-            if cuda:
-                inputs, labels = inputs.cuda(), labels.cuda()
+        try:
+            for i, data in enumerate(dataloader):
+                inputs, labels = data[0], data[1]
+                if cuda:
+                    inputs, labels = inputs.cuda(), labels.cuda()
 
-            # zero the parameter gradients
-            optimizer.zero_grad()
+                # zero the parameter gradients
+                optimizer.zero_grad()
 
-            # forward + backward + optimize
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+                # forward + backward + optimize
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
 
-            if per_epoch:
-                running_loss += loss.item()
-            else:
-                # print statistics on a per batch basis
-                running_loss = train_detector.print_statistics(running_loss,
-                    loss, i, epoch, model=model, T_print=100, T_save=10000,
-                    T_start=T_start, weight_dir=weight_dir)
+                if per_epoch:
+                    running_loss += loss.item()
+                else:
+                    # print statistics on a per batch basis
+                    running_loss = train_detector.print_statistics(running_loss,
+                        loss, i, epoch, model=model, T_print=100, T_save=10000,
+                        T_start=T_start, weight_dir=weight_dir)
 
-        if not per_epoch:
-            continue
+            if not per_epoch:
+                continue
 
-        # check validation set
-        if valloader:
-            pass
+            # check validation set
+            if valloader:
+                pass
 
-        # print statistics every T_print epochs
-        if epoch % T_print == T_print-1:
-            print('%d)\tloss: %.5f' % (epoch + 1, running_loss))
+            # print statistics every T_print epochs
+            if epoch % T_print == T_print-1:
+                print('%d)\tloss: %.5f' % (epoch + 1, running_loss))
 
-        # save every T_save epochs
-        if weight_dir and (epoch % T_save == T_save-1):
-            weight_fname = f'w_{epoch}.pth'
+            # save every T_save epochs
+            if weight_dir and (epoch % T_save == T_save-1):
+                weight_fname = f'w_{epoch}.pth'
+                weight_path = os.path.join(weight_dir, weight_fname)
+
+                print(f'\nSaving at {epoch+1}-th epoch')
+                torch.save(model.state_dict(), weight_path)
+                T_end = time.time()
+                print(f'Elapsed time: {T_end-T_start}\n')
+
+            # stopping criterion
+        except KeyboardInterrupt:
+            weight_fname = f'w_{epoch}_interrupt.pth'
             weight_path = os.path.join(weight_dir, weight_fname)
 
-            print(f'\nSaving at {epoch+1}-th epoch')
+            print(f'\nSaving at {weight_path}')
             torch.save(model.state_dict(), weight_path)
             T_end = time.time()
             print(f'Elapsed time: {T_end-T_start}\n')
 
-        # stopping criterion
+            break
+        except Exception as e:
+            print(e)
+            try:
+                print("img.shape =", img.shape)
+                print("gt.shape =", gt.shape)
+            except:
+                pass
+            continue
 
 
     T_end = time.time()
