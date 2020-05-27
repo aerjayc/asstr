@@ -483,7 +483,7 @@ def constantShapeCrop(img, centroids, shapes):
     return batch
 
 def augment(img, gt, size=None, scale=(0.08, 1.0), ratio=(3./4, 4./3),
-            degrees=[0,180], gt_hw_axes=[-2,-1], halve_gt=False):
+            degrees=[-180,180], gt_hw_axes=[-2,-1], halve_gt=False):
     """Performs data augmentation (transforms) on the img and gt.
     Args:
         img (PIL Image):
@@ -511,7 +511,12 @@ def augment(img, gt, size=None, scale=(0.08, 1.0), ratio=(3./4, 4./3),
     if size:
         img = cv2.resize(img, dsize=size)
         # resize(gt->HWC)->CHW
-        gt  = cv2.resize(gt.transpose(1,2,0), dsize=size).transpose(2,0,1)
+        gt  = cv2.resize(gt.transpose(1,2,0), dsize=size)
+
+        if gt.ndim == 2:    # if only 1 map, cv2.resize returns 2 dim
+            gt = gt[None, ...]
+        else:
+            gt = gt.transpose(2,0,1)
 
     # convert to torch tensor
     img = torch.Tensor(img).permute(2,0,1)  # CHW
