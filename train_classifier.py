@@ -517,7 +517,7 @@ def getCroppedImage(img_path, coords, augment=False):
 
 
 def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
-               valloader=None, cuda=True, per_epoch=True):
+               valloader=None, cuda=True, per_epoch=True, T_save=1, T_print=1):
     T_start = time.time()
     for epoch in epochs:
         running_loss = 0.0
@@ -550,21 +550,19 @@ def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
         if valloader:
             pass
 
-        # print statistics every epoch
-        print('%d)\tloss: %.5f' % (epoch + 1, running_loss))
+        # print statistics every T_print epochs
+        if epoch % T_print == T_print-1:
+            print('%d)\tloss: %.5f' % (epoch + 1, running_loss))
 
-        # save every epoch_save epochs
-        if epoch_save and epoch % epoch_save == epoch_save-1:
-            if weight_dir is not None:
-                weight_fname = f'w_{epoch}.pth'
-                weight_path = os.path.join(weight_dir, weight_fname)
+        # save every T_save epochs
+        if weight_dir and (epoch % T_save == T_save-1):
+            weight_fname = f'w_{epoch}.pth'
+            weight_path = os.path.join(weight_dir, weight_fname)
 
-                print(f'\nSaving at {i+1}-th batch')
-                torch.save(model.state_dict(), weight_path)
-                T_end = time.time()
-                print(f'Elapsed time: {T_end-T_start}\n')
-            else:
-                print(f'Not saving weights because weight_dir={weight_dir}')
+            print(f'\nSaving at {epoch+1}-th epoch')
+            torch.save(model.state_dict(), weight_path)
+            T_end = time.time()
+            print(f'Elapsed time: {T_end-T_start}\n')
 
         # stopping criterion
 
