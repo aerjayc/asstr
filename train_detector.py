@@ -25,8 +25,8 @@ class SynthCharMapDataset(Dataset):
     """SynthText Dataset + Heatmap + Direction Ground Truths"""
 
     def __init__(self, gt_path, img_dir, begin=0, cuda=True, size=None,
-                 color_flag=1, hard_examples=False, affinity_map=False,
-                 character_map=True, word_map=False, direction_map=True):
+                 color_flag=1, hard_examples=False, affinity_map=True,
+                 character_map=True, word_map=False, direction_map=False):
         """
         Args:
             gt_path (string): Path to gt.mat file (GT file)
