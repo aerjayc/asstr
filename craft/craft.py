@@ -28,7 +28,8 @@ class double_conv(nn.Module):
 
 
 class CRAFT(nn.Module):
-    def __init__(self, pretrained=False, freeze=False, num_class=2, idx_tanh=None):
+    def __init__(self, pretrained=False, freeze=False, num_class=2, idx_tanh=None,
+                 linear=True):
         super(CRAFT, self).__init__()
 
         """ Base network """
@@ -80,15 +81,16 @@ class CRAFT(nn.Module):
 
         y = self.conv_cls(feature)
 
-        N,C,H,W = y.shape
-        idx_tanh = self.idx_tanh
-        if idx_tanh is None:
-            y = torch.sigmoid(y)
-        else:
-            idx_tanh = [idx % C for idx in idx_tanh]
-            idx_sigmoid = list(set(range(C)) - set(idx_tanh))
-            y[:,idx_tanh,:,:] = torch.tanh(y[:,idx_tanh,:,:])
-            y[:,idx_sigmoid,:,:] = torch.sigmoid(y[:,idx_sigmoid,:,:])
+        if not linear:
+            N,C,H,W = y.shape
+            idx_tanh = self.idx_tanh
+            if idx_tanh is None:
+                y = torch.sigmoid(y)
+            else:
+                idx_tanh = [idx % C for idx in idx_tanh]
+                idx_sigmoid = list(set(range(C)) - set(idx_tanh))
+                y[:,idx_tanh,:,:] = torch.tanh(y[:,idx_tanh,:,:])
+                y[:,idx_sigmoid,:,:] = torch.sigmoid(y[:,idx_sigmoid,:,:])
 
         # y.shape: N,C,H,W -> N,H,W,C
         return y.permute(0,2,3,1), feature
