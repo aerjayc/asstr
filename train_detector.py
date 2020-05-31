@@ -329,12 +329,17 @@ def step(model, criterion, optimizer, input, target):
 
     return loss, optimizer
 
-def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwargs):
+def init_data(gt_path, img_dir, dataset, dataset_kwargs={},
+              dataloader_kwargs={}, testloader_kwargs={}, **kwargs):
     # defaults:
     dataset_defaults = {}
     dataloader_defaults = {
         "batch_size": 4,
         "shuffle": True
+    }
+    testloader_defaults = {
+        "batch_size": 4,
+        "shuffle": False
     }
     # if size is set, no need to use custom collate_fn
     if ("size" not in dataset_kwargs) or (dataset_kwargs["size"] is None):
@@ -346,15 +351,21 @@ def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwarg
     for entry in dataloader_defaults:
         if entry not in dataloader_kwargs:
             dataloader_kwargs[entry] = dataloader_defaults[entry]
-    if "split" not in kwargs:
-        kwargs["split"] = [800000,58750]
 
     # remember requires_grad=True
     dataset = SynthCharMapDataset(gt_path, img_dir, **dataset_kwargs)
-    train, test = torch.utils.data.random_split(dataset, kwargs["split"])
-    dataloader = DataLoader(train, **dataloader_kwargs)
+    if "split" in kwargs:
+        trainset, testset = torch.utils.data.random_split(dataset,
+                                                          kwargs["split"])
+        testloader = DataLoader(testset, **testloader_kwargs)
+    else:
+        trainset = dataset
+        testset = None
+        testloader = None
 
-    return dataloader, train, test
+    trainloader = DataLoader(trainset, **dataloader_kwargs)
+
+    return trainloader, trainset, testloader, testset
 
 def init_model(weight_dir, weight_path=None, num_class=2, linear=True):
     # make weight_dir if it doesn't exist
@@ -429,7 +440,7 @@ def train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=1):
 
     return img, target
 
-def main(weight_folder):
+def train_synthetic(weight_folder):
     gt_path = "/home/eee198/Downloads/SynthText/gt_v7.3.mat"
     img_dir = "/home/eee198/Downloads/SynthText/images"
     weight_dir = "/home/eee198/Downloads/SynthText/weights/" + weight_folder
@@ -441,15 +452,38 @@ def main(weight_folder):
     dataloader_kwargs = {
         "batch_size": 4
     }
-    num_class = 3
+    num_class = 2
     epochs = 1
 
-    dataloader, train, test = init_data(gt_path, img_dir,
-            dataset_kwargs=dataset_kwargs, dataloader_kwargs=dataloader_kwargs)
+    trainloader, _, _, _ = init_data(gt_path, img_dir,
+                                     dataset=SynthCharMapDataset,
+                                     dataset_kwargs=dataset_kwargs,
+                                     dataloader_kwargs=dataloader_kwargs)
     model, criterion, optimizer = init_model(weight_dir, weight_path, num_class)
 
-    train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=epochs)
+    train_loop(trainloader, model, criterion, optimizer,
+               weight_dir, epochs=epochs)
+
+def train_ic13(weight_folder):
+    img_dir = "/home/eee198/Downloads/icdar-2013/train_images"
+    gt_dir = "/home/eee198/Downloads/icdar-2013/train_char_gt"
+    weight_dir = "/home/eee198/Downloads/weights/detector/"
+    weight_path = "synth_pretrained.pth"
+
+    dataset_kwargs = {"cuda": True}
+    dataloader_kwargs = {"batch_size": 4}
+    num_class = 2
+    epochs = 100
+
+    trainloader,_,testloader,_ = init_data(gt_dir, img_dir,
+                                           dataset=ICDAR2013MapDataset,
+                                           dataset_kwargs=dataset_kwargs,
+                                           dataloader_kwargs=dataloader_kwargs)
+    model, criterion, optimizer = init_model(weight_dir, weight_path, num_class)
+
+    train_loop(trainloader, model, criterion, optimizer,
+               weight_dir, epochs=epochs)
 
 
 if __name__ == '__main__':
-    main()
+    pass
