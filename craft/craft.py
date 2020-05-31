@@ -58,6 +58,7 @@ class CRAFT(nn.Module):
         init_weights(self.conv_cls.modules())
 
         self.idx_tanh = idx_tanh
+        self.linear = linear
 
     def forward(self, x):
         """ Base network """
@@ -81,7 +82,7 @@ class CRAFT(nn.Module):
 
         y = self.conv_cls(feature)
 
-        if not linear:
+        if not self.linear:
             N,C,H,W = y.shape
             idx_tanh = self.idx_tanh
             if idx_tanh is None:

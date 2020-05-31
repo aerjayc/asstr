@@ -356,12 +356,12 @@ def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwarg
 
     return dataloader, train, test
 
-def init_model(weight_dir, weight_path=None, num_class=3):
+def init_model(weight_dir, weight_path=None, num_class=2, linear=True):
     # make weight_dir if it doesn't exist
     Path(weight_dir).mkdir(parents=True, exist_ok=True)
 
     # input: NCHW
-    model = CRAFT(pretrained=True, num_class=num_class).cuda()
+    model = CRAFT(pretrained=True, num_class=num_class, linear=linear).cuda()
     # output: NHWC
 
     if weight_path:
