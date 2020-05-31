@@ -23,6 +23,52 @@ def u2ToStr(u2, truncate_space=False):
     return s
 
 # general, low-level image-processing functions
+def wh2xy(x,y,w,h):
+    return np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
+
+def genCharBB(heatmap, thresh=0.5, max_thresh=1, xywh=True):
+    """
+    Arguments
+        heatmap (torch.Tensor or numpy.ndarray): must be of shape (H, W)
+        thresh (number): threshold value (default = 0.5)
+        max_thresh (number): value to be assigned to pixels that exceed thresh
+                             (default = 1)
+        xywh (Boolean): if True, the function will output a (n_BBs, 4)-shaped
+                        numpy or torch tensor in the order x0,y0,w,h
+                        else, the function will output a (n_BBs, 4, 2)-shaped
+                        numpy or torch tensor
+    """
+    if isinstance(heatmap, torch.Tensor):
+        heatmap = heatmap.numpy()   # convert torch tensor to numpy array
+
+    _, img_binary = cv2.threshold(heatmap, thresh, max_thresh,
+                                  cv2.THRESH_BINARY)
+    img_binary = img_binary.astype('uint8')
+
+    image, contours, _ = cv2.findContours(img_binary, cv2.RETR_TREE,
+                                          cv2.CHAIN_APPROX_SIMPLE)
+
+    if xywh:
+        BBs = np.zeros((len(contours), 4))
+    else:
+        BBs = np.zeros((len(contours), 4, 2))
+    for i, contour in enumerate(contours):
+        # get the bounding rect
+        x0, y0, w, h = cv2.boundingRect(contour)
+
+        if xywh:
+            BBs[i] = (x0, y0, w, h)
+        else:
+            BBs[i] = wh2xy(x0, y0, w, h)
+
+        # draw a green rectangle to visualize the bounding rect
+        # cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 1)
+
+    if isinstance(heatmap, torch.Tensor):
+        BBs = torch.Tensor(BBs)
+
+    return BBs
+
 def getPixelAngle(origin, pt, units='radians'):
     x,y = (pt - origin).astype('float32')
 
