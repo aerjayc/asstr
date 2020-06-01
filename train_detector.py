@@ -397,6 +397,36 @@ def init_model(weight_dir, weight_path=None, num_class=2, linear=True):
 
     return model, criterion, optimizer
 
+def train_ic13_loop(trainloader, model, criterion, optimizer,
+               epochs=100, epoch_start=0, T_print=200, T_save=10):
+    T_start = time.time()
+    for epoch in range(epoch_start, epochs):
+        running_loss = 0.0
+        running_loss_mini = 0.0
+        for i, (inputs, targets) in enumerate(trainloader):
+            loss, optimizer = step(model, criterion, optimizer, inputs, targets)
+
+            running_loss += loss.item()
+            running_loss_mini += loss.item()
+
+            if i % T_print == T_print-1:
+                T_end = time.time()
+                print('\tbatch %3d\tloss: %0.5f' % (i+1, running_loss/T_print), end='\t')
+                print(T_end-T_start, 'secs elapsed')
+                running_loss_mini = 0.0
+
+        # print statistics
+        T_end = time.time()
+        print('epoch %3d\tloss: %f' % (epoch + 1, running_loss))
+        print(T_end-T_start, 'secs elapsed')
+
+        # save
+        if epoch % T_save == T_save-1:
+            save_model(model, weights_dir, weight_fname)
+
+    print("Done!")
+
+
 def train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=1):
     T_start = time.time()
     for epoch in range(epochs):
