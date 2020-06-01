@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.path import Path
+import h5py
 import cv2
 import torch
 import PIL
@@ -228,11 +229,14 @@ def getBreakpoints(txt):
     return breakpoints
 
 def txtToInstance(txt):
-    txt_i = np.array(txt).T
-    instances = []
-    for instance in txt_i:
-        instance = u2ToStr(instance)
-        instances += instance.split()
+    if isinstance(txt, h5py._hl.dataset.Dataset):
+        txt_i = np.array(txt).T
+        instances = []
+        for instance in txt_i:
+            instance = u2ToStr(instance)
+            instances += instance.split()
+    else:
+        instances = "".join(txt).split()
 
     return instances
 
