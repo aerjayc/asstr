@@ -25,8 +25,8 @@ class SynthCharMapDataset(Dataset):
     """SynthText Dataset + Heatmap + Direction Ground Truths"""
 
     def __init__(self, gt_path, img_dir, begin=0, cuda=True, size=None,
-                 color_flag=1, hard_examples=False, affinity_map=False,
-                 character_map=True, word_map=False, direction_map=True):
+                 color_flag=1, hard_examples=False, affinity_map=True,
+                 character_map=True, word_map=False, direction_map=False):
         """
         Args:
             gt_path (string): Path to gt.mat file (GT file)
@@ -190,10 +190,11 @@ class SynthCharMapDataset(Dataset):
 
 class ICDAR2013MapDataset(ICDAR2013Dataset):
 
-    def __init__(self, gt_dir, img_dir, size=None, cuda=True,
-                 character_map=True, direction_map=False, augment=True):
+    def __init__(self, gt_dir, img_dir, size=None, cuda=True, augment=True,
+                 character_map=True, affinity_map=True, direction_map=False):
         self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
         self.character_map = character_map
+        self.affinity_map = affinity_map
         self.direction_map = direction_map
         self.augment = augment
 
@@ -203,6 +204,12 @@ class ICDAR2013MapDataset(ICDAR2013Dataset):
         else:
             self.dtype = torch.FloatTensor
 
+        # generate templates
+        if self.character_map:
+            self.gaussian_template = image_proc.genGaussianTemplate()
+        if self.direction_map:
+            self.direction_template = image_proc.genDirectionMapTemplate()
+
     def __len__(self):
         return len(self.raw_dataset)
 
@@ -210,22 +217,27 @@ class ICDAR2013MapDataset(ICDAR2013Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        img, charBBs, chars = self.raw_dataset[idx]
+        img, charBBs, chars, txt = self.raw_dataset[idx]
         img_shape = img.height, img.width
 
         # get the heatmap GTs
         if self.character_map:
-            char_map, aff_map = image_proc.genPseudoGT(charBBs, chars, img_shape,
-                                        generate_affinity=False)#,
-                                            # template=self.gaussian_template)
+            char_map, aff_map = image_proc.genPseudoGT(charBBs, txt, img_shape,
+                                        generate_affinity=self.affinity_map,
+                                        template=self.gaussian_template)
         if self.direction_map:
-            cos_map, sin_map = genDirectionGT(charBBs, img_shape)#,
-                                            # template=self.direction_template)
+            cos_map, sin_map = genDirectionGT(charBBs, img_shape,
+                                        template=self.direction_template)
 
         # combine gts into a single tensor
         gt = None
         if self.character_map:
             gt = char_map[None, ...]
+        if self.affinity_map:
+            if gt is None:
+                gt = aff_map[None, ...]
+            else:
+                gt = np.concatenate((gt, aff_map[None, ...]))
         if self.direction_map:
             dir_map = np.stack((cos_map, sin_map))
             if gt is None:
@@ -329,12 +341,17 @@ def step(model, criterion, optimizer, input, target):
 
     return loss, optimizer
 
-def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwargs):
+def init_data(gt_path, img_dir, dataset, dataset_kwargs={},
+              dataloader_kwargs={}, testloader_kwargs={}, **kwargs):
     # defaults:
     dataset_defaults = {}
     dataloader_defaults = {
         "batch_size": 4,
         "shuffle": True
+    }
+    testloader_defaults = {
+        "batch_size": 4,
+        "shuffle": False
     }
     # if size is set, no need to use custom collate_fn
     if ("size" not in dataset_kwargs) or (dataset_kwargs["size"] is None):
@@ -346,22 +363,28 @@ def init_data(gt_path, img_dir, dataset_kwargs={}, dataloader_kwargs={}, **kwarg
     for entry in dataloader_defaults:
         if entry not in dataloader_kwargs:
             dataloader_kwargs[entry] = dataloader_defaults[entry]
-    if "split" not in kwargs:
-        kwargs["split"] = [800000,58750]
 
     # remember requires_grad=True
     dataset = SynthCharMapDataset(gt_path, img_dir, **dataset_kwargs)
-    train, test = torch.utils.data.random_split(dataset, kwargs["split"])
-    dataloader = DataLoader(train, **dataloader_kwargs)
+    if "split" in kwargs:
+        trainset, testset = torch.utils.data.random_split(dataset,
+                                                          kwargs["split"])
+        testloader = DataLoader(testset, **testloader_kwargs)
+    else:
+        trainset = dataset
+        testset = None
+        testloader = None
 
-    return dataloader, train, test
+    trainloader = DataLoader(trainset, **dataloader_kwargs)
 
-def init_model(weight_dir, weight_path=None, num_class=3):
+    return trainloader, trainset, testloader, testset
+
+def init_model(weight_dir, weight_path=None, num_class=2, linear=True):
     # make weight_dir if it doesn't exist
     Path(weight_dir).mkdir(parents=True, exist_ok=True)
 
     # input: NCHW
-    model = CRAFT(pretrained=True, num_class=num_class).cuda()
+    model = CRAFT(pretrained=True, num_class=num_class, linear=linear).cuda()
     # output: NHWC
 
     if weight_path:
@@ -373,6 +396,36 @@ def init_model(weight_dir, weight_path=None, num_class=3):
     optimizer = optim.SGD(model.parameters(), lr=0.001) # tweak parameters
 
     return model, criterion, optimizer
+
+def train_ic13_loop(trainloader, model, criterion, optimizer,
+               epochs=100, epoch_start=0, T_print=200, T_save=10):
+    T_start = time.time()
+    for epoch in range(epoch_start, epochs):
+        running_loss = 0.0
+        running_loss_mini = 0.0
+        for i, (inputs, targets) in enumerate(trainloader):
+            loss, optimizer = step(model, criterion, optimizer, inputs, targets)
+
+            running_loss += loss.item()
+            running_loss_mini += loss.item()
+
+            if i % T_print == T_print-1:
+                T_end = time.time()
+                print('\tbatch %3d\tloss: %0.5f' % (i+1, running_loss/T_print), end='\t')
+                print(T_end-T_start, 'secs elapsed')
+                running_loss_mini = 0.0
+
+        # print statistics
+        T_end = time.time()
+        print('epoch %3d\tloss: %f' % (epoch + 1, running_loss))
+        print(T_end-T_start, 'secs elapsed')
+
+        # save
+        if epoch % T_save == T_save-1:
+            save_model(model, weights_dir, weight_fname)
+
+    print("Done!")
+
 
 def train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=1):
     T_start = time.time()
@@ -429,7 +482,7 @@ def train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=1):
 
     return img, target
 
-def main(weight_folder):
+def train_synthetic(weight_folder):
     gt_path = "/home/eee198/Downloads/SynthText/gt_v7.3.mat"
     img_dir = "/home/eee198/Downloads/SynthText/images"
     weight_dir = "/home/eee198/Downloads/SynthText/weights/" + weight_folder
@@ -441,15 +494,38 @@ def main(weight_folder):
     dataloader_kwargs = {
         "batch_size": 4
     }
-    num_class = 3
+    num_class = 2
     epochs = 1
 
-    dataloader, train, test = init_data(gt_path, img_dir,
-            dataset_kwargs=dataset_kwargs, dataloader_kwargs=dataloader_kwargs)
+    trainloader, _, _, _ = init_data(gt_path, img_dir,
+                                     dataset=SynthCharMapDataset,
+                                     dataset_kwargs=dataset_kwargs,
+                                     dataloader_kwargs=dataloader_kwargs)
     model, criterion, optimizer = init_model(weight_dir, weight_path, num_class)
 
-    train_loop(dataloader, model, criterion, optimizer, weight_dir, epochs=epochs)
+    train_loop(trainloader, model, criterion, optimizer,
+               weight_dir, epochs=epochs)
+
+def train_ic13(weight_folder):
+    img_dir = "/home/eee198/Downloads/icdar-2013/train_images"
+    gt_dir = "/home/eee198/Downloads/icdar-2013/train_char_gt"
+    weight_dir = "/home/eee198/Downloads/weights/detector/"
+    weight_path = "synth_pretrained.pth"
+
+    dataset_kwargs = {"cuda": True}
+    dataloader_kwargs = {"batch_size": 4}
+    num_class = 2
+    epochs = 100
+
+    trainloader,_,testloader,_ = init_data(gt_dir, img_dir,
+                                           dataset=ICDAR2013MapDataset,
+                                           dataset_kwargs=dataset_kwargs,
+                                           dataloader_kwargs=dataloader_kwargs)
+    model, criterion, optimizer = init_model(weight_dir, weight_path, num_class)
+
+    train_loop(trainloader, model, criterion, optimizer,
+               weight_dir, epochs=epochs)
 
 
 if __name__ == '__main__':
-    main()
+    pass

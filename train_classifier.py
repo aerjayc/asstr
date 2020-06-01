@@ -181,8 +181,18 @@ class ICDAR2013Dataset(Dataset):
                    'x1', 'y1',      # top left
                    'x2', 'y2',      # bottom right
                    'character']
-        gt_df = pd.read_csv(gt_path, names=headers, comment='#',
-                            delim_whitespace=True, doublequote=False)
+        gt_df = pd.read_csv(gt_path,
+                            names=headers,
+                            comment='#',
+                            skip_blank_lines=False, # to separate words
+                            delim_whitespace=True,
+                            doublequote=False)      # to get """ entries
+
+        txt = gt_df['character'].copy()
+        txt[txt.isnull()] = ' '
+        txt = list(txt)
+
+        gt_df = gt_df.dropna()              # drop NaN rows
 
         charBBs = gt_df[['x1', 'y1',
                          'x2', 'y1',
@@ -191,7 +201,7 @@ class ICDAR2013Dataset(Dataset):
 
         chars = gt_df['character']
 
-        return img, charBBs, chars
+        return img, charBBs, chars, txt
 
 
 class ICDAR2013CharDataset(ICDAR2013Dataset):
@@ -216,7 +226,7 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        img, charBBs, chars = self.raw_dataset[idx]
+        img, charBBs, chars, txt = self.raw_dataset[idx]
         W, H = img.width, img.height
 
         # filter faulty values
@@ -675,3 +685,4 @@ if __name__ == '__main__':
     # classes = ['a', 'e', 'i', 'o', 'u']
     # simpleGenChar(10, img_dir, mat_dir, N_images=100)
     # genBalancedCharDataset(20, img_dir, mat_path, char_dir, classes=classes)
+
