@@ -190,10 +190,11 @@ class SynthCharMapDataset(Dataset):
 
 class ICDAR2013MapDataset(ICDAR2013Dataset):
 
-    def __init__(self, gt_dir, img_dir, size=None, cuda=True,
-                 character_map=True, direction_map=False, augment=True):
+    def __init__(self, gt_dir, img_dir, size=None, cuda=True, augment=True,
+                 character_map=True, affinity_map=True, direction_map=False):
         self.raw_dataset = ICDAR2013Dataset(gt_dir, img_dir)
         self.character_map = character_map
+        self.affinity_map = affinity_map
         self.direction_map = direction_map
         self.augment = augment
 
@@ -203,6 +204,12 @@ class ICDAR2013MapDataset(ICDAR2013Dataset):
         else:
             self.dtype = torch.FloatTensor
 
+        # generate templates
+        if self.character_map:
+            self.gaussian_template = image_proc.genGaussianTemplate()
+        if self.direction_map:
+            self.direction_template = image_proc.genDirectionMapTemplate()
+
     def __len__(self):
         return len(self.raw_dataset)
 
@@ -210,22 +217,27 @@ class ICDAR2013MapDataset(ICDAR2013Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        img, charBBs, chars = self.raw_dataset[idx]
+        img, charBBs, chars, txt = self.raw_dataset[idx]
         img_shape = img.height, img.width
 
         # get the heatmap GTs
         if self.character_map:
-            char_map, aff_map = image_proc.genPseudoGT(charBBs, chars, img_shape,
-                                        generate_affinity=False)#,
-                                            # template=self.gaussian_template)
+            char_map, aff_map = image_proc.genPseudoGT(charBBs, txt, img_shape,
+                                        generate_affinity=self.affinity_map,
+                                        template=self.gaussian_template)
         if self.direction_map:
-            cos_map, sin_map = genDirectionGT(charBBs, img_shape)#,
-                                            # template=self.direction_template)
+            cos_map, sin_map = genDirectionGT(charBBs, img_shape,
+                                        template=self.direction_template)
 
         # combine gts into a single tensor
         gt = None
         if self.character_map:
             gt = char_map[None, ...]
+        if self.affinity_map:
+            if gt is None:
+                gt = aff_map[None, ...]
+            else:
+                gt = np.concatenate((gt, aff_map[None, ...]))
         if self.direction_map:
             dir_map = np.stack((cos_map, sin_map))
             if gt is None:
