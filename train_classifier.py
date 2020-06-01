@@ -199,7 +199,7 @@ class ICDAR2013Dataset(Dataset):
                          'x2', 'y2',
                          'x1', 'y2']].to_numpy().reshape(-1,4,2)
 
-        chars = gt_df['character']
+        chars = gt_df['character'].to_numpy()
 
         return img, charBBs, chars, txt
 
@@ -403,8 +403,8 @@ def genNonCharBBs(wordBBs, img_wh, N_nonchars, retries=10):
     return None
 
 
-def string_to_onehot(string, alphabet=None, char_to_int=None, include_nonchar=True,
-                     to_onehot=True):
+def string_to_onehot(string, alphabet=None, char_to_int=None,
+                     include_nonchar=True, to_onehot=True):
     # based on https://stackoverflow.com/questions/49370940/
     if not char_to_int:
         if not alphabet:
@@ -426,7 +426,8 @@ def string_to_onehot(string, alphabet=None, char_to_int=None, include_nonchar=Tr
                 char = None     # if char not in alphabet
 
         encoded_data.append(char_to_int[char])
-    # encoded_data = [char_to_int[char] if char in alphabet else char_to_int[char.swapcase()] for char in string]
+    # encoded_data = [char_to_int[char] if char in alphabet else
+    #                 char_to_int[char.swapcase()] for char in string]
 
     if to_onehot:
         # convert array of ints to one-hot vectors
@@ -466,8 +467,8 @@ def shuffle_in_unison(a, b):
     np.random.set_state(rng_state)
     np.random.shuffle(b)
 
-def genBalancedCharDataset(N_max, img_dir, mat_path, char_dir, skip_existing=True,
-                           classes=None):
+def genBalancedCharDataset(N_max, img_dir, mat_path, char_dir,
+                           skip_existing=True, classes=None):
     """ randomly select images forever
         for each selected image, save the character img
         and update the distribution
@@ -532,11 +533,10 @@ def getCroppedImage(img_path, coords, augment=False):
 def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
                valloader=None, cuda=True, per_epoch=True, T_save=1, T_print=1):
     T_start = time.time()
-    for epoch in epochs:
+    for epoch in range(epochs):
         running_loss = 0.0
         try:
-            for i, data in enumerate(dataloader):
-                inputs, labels = data[0], data[1]
+            for i, (inputs, labels) in enumerate(dataloader):
                 if cuda:
                     inputs, labels = inputs.cuda(), labels.cuda()
 
@@ -549,13 +549,21 @@ def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
                 loss.backward()
                 optimizer.step()
 
+                # free up space
+                del inputs
+                del outputs
+                del labels
+                torch.cuda.empty_cache()
+
                 if per_epoch:
                     running_loss += loss.item()
                 else:
                     # print statistics on a per batch basis
-                    running_loss = train_detector.print_statistics(running_loss,
-                        loss, i, epoch, model=model, T_print=100, T_save=10000,
-                        T_start=T_start, weight_dir=weight_dir)
+                    running_loss = train_detector.print_statistics(
+                                    running_loss, loss, i, epoch,
+                                    model=model, weight_dir=weight_dir,
+                                    T_save=T_save, T_print=T_print,
+                                    T_start=T_start)
 
             if not per_epoch:
                 continue
@@ -627,7 +635,7 @@ def synthetic_classifier_training():
     cuda = False
     size = (64,64)
 
-    epochs = range(1)
+    epochs = 1
 
     dataset = SynthCharDataset(gt_path, img_dir, size)
 
@@ -648,8 +656,8 @@ def synthetic_classifier_training():
     criterion = nn.NLLLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9) #
 
-    train_loop(trainloader, model, optimizer, criterion, epochs, weight_dir,
-               per_epoch=False)
+    train_loop(trainloader, model, optimizer, criterion, weight_dir,
+               epochs=epochs, per_epoch=False, T_print=100, T_save=10000)
 
 
 class CharClassifier(nn.Module):
