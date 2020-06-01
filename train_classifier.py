@@ -16,12 +16,16 @@ ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
 
 
 def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
-               valloader=None, cuda=True, per_epoch=True, T_save=1, T_print=1):
+               valloader=None, cuda=True, per_epoch=True, T_save=1, T_print=1,
+               supress_errors=True):
     T_start = time.time()
     for epoch in range(epochs):
         running_loss = 0.0
         try:
             for i, (inputs, labels) in enumerate(dataloader):
+                if len(labels) == 0:
+                    # print("Skipping batch with 0 length")
+                    continue
                 if cuda:
                     inputs, labels = inputs.cuda(), labels.cuda()
 
@@ -89,7 +93,10 @@ def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
                 print("gt.shape =", gt.shape)
             except:
                 pass
-            continue
+            if supress_errors:
+                continue
+            else:
+                break
 
 
     T_end = time.time()
