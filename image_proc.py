@@ -1,6 +1,5 @@
 import numpy as np
 import random
-import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.path import Path
@@ -13,15 +12,6 @@ import scipy.ndimage
 import torch.nn.functional as F
 import numbers
 
-# matfile-specific functions
-def u2ToStr(u2, truncate_space=False):
-    s = ""
-    for c in u2:
-        if truncate_space and c == 32:
-            break
-        else:
-            s += chr(c)
-    return s
 
 # general, low-level image-processing functions
 def wh2xy(x,y,w,h):
@@ -219,36 +209,14 @@ def genGaussianTemplate(size=None):
 
     return genDistortedGauss(BB, size)
 
-def getBreakpoints(txt):
-    cumulative = -1
-    breakpoints = []
-    for instance in txtToInstance(txt):
-        cumulative += len(instance)
-        breakpoints += [cumulative]
-
-    return breakpoints
-
-def txtToInstance(txt):
-    if isinstance(txt, h5py._hl.dataset.Dataset):
-        txt_i = np.array(txt).T
-        instances = []
-        for instance in txt_i:
-            instance = u2ToStr(instance)
-            instances += instance.split()
-    else:
-        instances = "".join(txt).split()
-
-    return instances
-
 def genPseudoGT(charBB_i, txt, image_shape, generate_affinity=True, template=None):
     assert charBB_i.shape[-2:] == (4,2)
     if charBB_i.ndim == 2:  # if only one char
         charBB_i = np.array([charBB_i], dtype='float32')
 
     if generate_affinity:
-        breakpoints = getBreakpoints(txt)
-    # instances = txtToInstance(txt)
-    # entire_string = ''.join(instances)
+        import dataset_utils
+        breakpoints = dataset_utils.getBreakpoints(txt)
 
     pseudoGT_blank = np.zeros(image_shape, dtype='float32')
     pseudoGT_region = pseudoGT_blank.copy()
@@ -624,6 +592,26 @@ def crop(tensor, i,j,h,w, axes=[0,1]):
     tensor = tensor.transpose(np.argsort(axis_order))
     return tensor
 
+def cropBB(img, BB, size=None, fast=False):
+    # augment coordinates
+    # BB = augmentBB(BB)
+
+    # crop
+    if fast:
+        BB = order_points(BB)
+        j, i = np.min(BB, axis=0)
+        # use ceil in w,h to prevent w=0 or h=0
+        w, h = np.ceil(np.max(BB, axis=0) - np.min(BB, axis=0))
+
+        cropped = crop(img, i,j,h,w)
+    else:
+        if isinstance(img, PIL.Image.Image):
+            img = np.array(img, dtype='float32')
+
+        cropped = perspectiveTransform(img, initial=BB, size=size)
+
+    return cropped
+
 def get_containing_rect(points):
     """Get the BB coordinates of the smallest rectangle containing ``points``
 
@@ -660,25 +648,5 @@ def get_width_height(points):
 
 
 if __name__ == '__main__':
-    plt.figure()
-    plt.imshow(cv2.imread('images/warped.jpg', 0), cmap='gray', interpolation='nearest')
+    pass
 
-    BBcoords = np.array([ (15,11),
-                          (48,24),
-                          (52,47),
-                          (19,62) ])
-
-    a = genDistortedGauss(BBcoords, img_size=(100,100))
-
-    BBcoords = np.array([ (50,20),
-                          (80,20),
-                          (80,50),
-                          (50,50) ])
-
-    b = genDistortedGauss(BBcoords, img_size=(100,100))
-
-    plt.figure()
-    plt.imshow(a+b, interpolation='nearest')
-    plt.colorbar()
-
-    plt.show()
