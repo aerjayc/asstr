@@ -513,7 +513,7 @@ class ICDAR2013CharDataset(ICDAR2013Dataset):
 
         # convert chars to stack of one-hot vectors
         onehot_chars = string_to_onehot(chars, alphabet=self.alphabet,
-                                    to_onehot=False)#.long()
+                                    to_onehot=False).long()
 
         return batch, onehot_chars
 
