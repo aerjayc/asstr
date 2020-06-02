@@ -109,7 +109,30 @@ def string_to_onehot(string, alphabet=None, char_to_int=None,
 
 # Functions on images / bounding boxes
 
-def filter_BBs(BBs, gts, img_wh):
+def expand_BBs(BBs, img_wh, factor=1.25):
+    factor = np.array([factor, factor])
+
+    mins = np.min(BBs, axis=1)
+    maxs = np.max(BBs, axis=1)
+
+    # centroids
+    centroids = np.mean(np.array(BBs), axis=1)
+
+    # new widths and heights
+    new_shapes = factor * (maxs - mins)
+
+    tls = centroids - 0.5*new_shapes
+    brs = centroids + 0.5*new_shapes
+    trs = centroids + 0.5*np.array([1, -1])*new_shapes
+    bls = centroids + 0.5*np.array([-1, 1])*new_shapes
+
+    BBs = np.array([tls, trs, brs, bls], dtype='int32').transpose(1,0,2)
+    if img_wh is not None:
+        BBs = np.clip(BBs, 0, img_wh)
+
+    return BBs
+
+def filter_BBs(BBs, gts, img_wh, verbose=False):
     """Filter BBs if they go out of the bounds of the image
         or if they have dimension <= 1
     Args:
@@ -126,13 +149,17 @@ def filter_BBs(BBs, gts, img_wh):
         w, h = br - tl
 
         # if BB exceeds image bounds
-        if (br[0] >= img_w) or (br[1] >= img_h):
+        if (br[0] > img_w) or (br[1] > img_h):
             skip_mask[i] = 0
+            if verbose:
+                print("skipping", BB, "as it exceeds image bounds", img_wh)
         # if BB dimensions <= 1
         elif (w <= 1) or (h <= 1):
             skip_mask[i] = 0
+            if verbose:
+                print("skipping", BB, "due to low size")
         # if no problems
-        else:
+        elif gts is not None:    # only append gts if gt is not None
             correct_gts.append(gts[i])
 
     return BBs[skip_mask], correct_gts
