@@ -22,6 +22,7 @@ from image_proc import cropBB
 
 
 ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
+ALPHANUMERIC = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ0123456789") + [None,]
 
 # SynthText Dataset
 class SynthCharDataset(Dataset):
