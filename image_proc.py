@@ -375,18 +375,6 @@ def zero_pad(tensors, shape=None, cuda=True):
     return template
 
 
-def centroid2xy(centroids, shapes):
-    assert shapes.shape[-1:] == (2,), f"shapes.shape = {shapes.shape}"
-    if shapes.shape == (2,):
-        shapes = np.array([shapes], dtype="int32")
-
-    perp_offsets = (shapes/2).astype("int32")
-
-    brs, tls = centroids + perp_offsets, centroids - perp_offsets
-    bls, trs = np.stack((brs, tls), axis=0).transpose(2,1,0)
-
-    return np.stack((tl,tr,br,bl), axis=0).transpose(1,0,2)
-
 def centroid2minmax(centroids, shapes, yx_max):
     assert shapes.shape[-1:] == (2,), f"shapes.shape = {shapes.shape}"
     if shapes.shape == (2,):
