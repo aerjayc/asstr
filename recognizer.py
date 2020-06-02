@@ -15,8 +15,8 @@ def map_to_crop(img, char_map, char_size=(64,64), cuda=True, expand_factor=2.5):
             C, H, W = img.shape
             if isinstance(img, np.ndarray):
                 img = img.transpose(1,2,0)
-            else:
-                img = img.permute(1,2,0)
+            else:   # if torch.Tensor
+                img = img.permute(1,2,0).cpu().detach().numpy()
         else:
             H, W, C = img.shape
 
@@ -52,4 +52,4 @@ def map_to_crop(img, char_map, char_size=(64,64), cuda=True, expand_factor=2.5):
     if cuda:
         cropped_chars = cropped_chars.cuda()
 
-    return cropped_chars
+    return cropped_chars, charBBs
