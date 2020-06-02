@@ -369,6 +369,77 @@ class ICDAR2013Dataset(Dataset):
         return img, charBBs, chars, txt
 
 
+class ICDAR2013TestDataset(Dataset):
+
+    def __init__(self, gt_dir, img_dir, size=None, cuda=True, normalize=True):
+        # inherit  __init__() of Dataset class
+        super(Dataset).__init__()
+
+        self.gt_dir = gt_dir
+        self.img_dir = img_dir
+        self.size = size
+        self.cuda = cuda
+        self.normalize = normalize
+
+        img_exts = ['.jpg', '.jpeg', '.png', '.bmp']
+        self.img_names = []
+        # self.img_paths = []
+        _, _, files = next(os.walk(img_dir))
+        for file in sorted(files):
+            if os.path.splitext(file)[1].lower() in img_exts:
+                self.img_names.append(file)
+                # path_name = os.path.join(img_dir, file)
+                # self.img_paths.append(path_name)
+
+    def __len__(self):
+        return len(self.img_names)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_name = self.img_names[idx]
+        gt_name = f"gt_{img_name[:-4]}.txt"
+        img_path = os.path.join(self.img_dir, img_name)
+        gt_path = os.path.join(self.gt_dir, gt_name)
+
+        pil_img = PIL.Image.open(img_path)
+        W, H = pil_img.width, pil_img.height
+        img = np.array(pil_img)             # H,W,C
+        pil_img.close()
+
+        headers = ['left', 'top', 'right', 'bottom', 'transcription']
+        gt_df = pd.read_csv(gt_path,
+                            names=headers,
+                            comment='#',
+                            delim_whitespace=True,
+                            escapechar='\\')
+
+        wordBBs = gt_df[['left' , 'top'   ,
+                         'right', 'top'   ,
+                         'right', 'bottom',
+                         'left' , 'bottom' ]].to_numpy().reshape(-1,4,2)
+
+        words = gt_df['transcription'].to_numpy()
+
+        # resize when # of pixels exceeds size
+        if (self.size is not None) and ((W*H) > np.multiply(*self.size)):
+            img = cv2.resize(img, dsize=self.size)
+
+        # normalize to [-1,1]
+        if self.normalize:
+            img = img.astype('float')
+            img /= 255.0
+            img -= 0.5
+            img *= 2.0
+
+        img = torch.from_numpy(img).permute(2,0,1).float()  # C,H,W
+        if self.cuda:
+            img = img.cuda()
+
+        return img, wordBBs, words
+
+
 class ICDAR2013MapDataset(ICDAR2013Dataset):
 
     def __init__(self, gt_dir, img_dir, size=None, cuda=True, augment=True,
