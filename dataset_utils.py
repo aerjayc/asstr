@@ -106,6 +106,19 @@ def string_to_onehot(string, alphabet=None, char_to_int=None,
     else:
         return torch.Tensor(encoded_data)
 
+def onehot_to_chars(onehots, alphabet):
+    assert isinstance(onehots, (torch.Tensor, np.ndarray)),\
+           "onehots should be a torch.Tensor or numpy.ndarray"
+
+    if isinstance(onehots, torch.Tensor):
+        ints = torch.argmax(onehots, dim=1)
+    elif isinstance(onehots, np.ndarray):
+        ints = np.argmax(onehots, axis=1)
+
+    chars = [alphabet[int(idx)] for idx in ints]
+
+    return chars
+
 
 # Functions on images / bounding boxes
 
