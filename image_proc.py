@@ -34,9 +34,9 @@ def genCharBB(heatmap, thresh=0.5, max_thresh=1, xywh=True):
 
     _, img_binary = cv2.threshold(heatmap, thresh, max_thresh,
                                   cv2.THRESH_BINARY)
-    img_binary = img_binary.astype('uint8')
+    img_binary = img_binary.astype(np.uint8)
 
-    image, contours, _ = cv2.findContours(img_binary, cv2.RETR_TREE,
+    contours, _ = cv2.findContours(img_binary, cv2.RETR_TREE,
                                           cv2.CHAIN_APPROX_SIMPLE)
 
     if xywh:
