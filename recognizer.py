@@ -7,7 +7,7 @@ import PIL.Image
 from image_proc import genCharBB, cropBB
 from dataset_utils import filter_BBs, expand_BBs
 
-def map_to_crop(img, char_map, char_size=(64,64), cuda=True, expand_factor=2.5):
+def map_to_crop(img, char_map, char_size=(64,64), cuda=True, expand_factor=3):
     if isinstance(img, PIL.Image.Image):
         C, W, H = 3, img.width, img.height
     if isinstance(img, (np.ndarray, torch.Tensor)):
