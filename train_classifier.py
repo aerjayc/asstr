@@ -12,7 +12,8 @@ import train_detector
 from datasets import SynthCharDataset, ICDAR2013Dataset, ICDAR2013CharDataset
 from classifier import CharClassifier
 
-ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
+from datasets import ALPHABET, ALPHANUMERIC
+# ALPHABET = list("AaBbCDdEeFfGgHhIiJjKLlMmNnOPQqRrSTtUVWXYZ") + [None,]
 
 
 def train_loop(dataloader, model, optimizer, criterion, epochs, weight_dir,
