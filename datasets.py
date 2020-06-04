@@ -407,7 +407,6 @@ class ICDAR2013TestDataset(Dataset):
         pil_img = PIL.Image.open(img_path)
         W, H = pil_img.width, pil_img.height
         img = np.array(pil_img)             # H,W,C
-        pil_img.close()
 
         headers = ['left', 'top', 'right', 'bottom', 'transcription']
         gt_df = pd.read_csv(gt_path,
@@ -438,7 +437,7 @@ class ICDAR2013TestDataset(Dataset):
         if self.cuda:
             img = img.cuda()
 
-        return img, wordBBs, words
+        return img, wordBBs, words, pil_img
 
 
 class ICDAR2013MapDataset(ICDAR2013Dataset):
