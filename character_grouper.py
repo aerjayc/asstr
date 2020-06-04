@@ -45,13 +45,19 @@ def character_grouper(charBBs, k=0.7):
         lines[line_num] = np.array(lines[line_num])
         line_num += 1
 
-    # sort each line    # line: (n_chars, 4, 2)
+    # sort lines
+    # line_ys = [np.mean(line.reshape(-1,2), axis=0)[1] for line in lines]
+    # lines = lines[np.argsort(line_ys)]
+
+    # sort chars in each line    # line: (n_chars, 4, 2)
     for i, line in enumerate(lines):
         sort_x = line[:,0,0].argsort()
         lines[i] = line[sort_x]
 
     words = []
+    words_idx = []
     word_num = -1
+    char_num = 0
     for i, line in enumerate(lines):
         # get threshold for current line
         sum_width = 0
@@ -67,6 +73,8 @@ def character_grouper(charBBs, k=0.7):
             if prev_charBB is None:     # first iteration
                 word_num += 1
                 words.append([charBB])
+                words_idx.append([char_num])
+                char_num += 1
                 prev_charBB = charBB
                 continue
 
@@ -75,17 +83,20 @@ def character_grouper(charBBs, k=0.7):
             if (left_curr - right_prev) <= k*threshold:
                 # same word
                 words[word_num].append(charBB)
+                words_idx[word_num].append(char_num)
             else:
                 # new word
                 word_num += 1
                 words.append([charBB])
+                words_idx.append([char_num])
 
+            char_num += 1
             prev_charBB = charBB
 
     for i in range(len(words)):
         words[i] = np.array(words[i])
 
-    return lines, words
+    return lines, words, words_idx
 
 def words_to_wordBBs(words):
     wordBBs = np.zeros((len(words), 4, 2))
