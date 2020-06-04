@@ -10,7 +10,8 @@ from pathlib import Path
 
 import datasets
 from image_proc import genCharBB, cropBB
-from dataset_utils import filter_BBs, expand_BBs, onehot_to_chars
+from dataset_utils import filter_BBs, expand_BBs, onehot_to_chars,\
+                          get_filenames
 from character_grouper import character_grouper, words_to_wordBBs
 
 from classifier import CharClassifier
@@ -81,7 +82,7 @@ def recognizer(img, detector_model, classifier_model, alphabet,
                show=False, expand_factor=3, thresh=0.5):
     """
     Arguments:
-        - img (numpy.ndarray): shaped (C, H, W)
+        - img (torch.Tensor): shaped (C, H, W)
     """
     img = img[None,...].cuda()
 
@@ -126,7 +127,7 @@ def recognizer(img, detector_model, classifier_model, alphabet,
     return wordBBs, words
 
 
-def make_submit_file(test_img_dir, test_gt_dir,
+def export_task1_4(test_img_dir, test_gt_dir,
                      classifier_weight_path, detector_weight_path,
                      alphabet=datasets.ALPHANUMERIC, submit_dir='submit',
                      thresh=0.3):
@@ -225,16 +226,11 @@ def make_submit_file(test_img_dir, test_gt_dir,
     print("Done!")
 
 
-def make_submit_file_word(test_img_dir, test_gt_dir,
-                     classifier_weight_path, detector_weight_path,
-                     alphabet=datasets.ALPHANUMERIC, submit_dir='submit',
-                     thresh=0.3):
-    testset = datasets.ICDAR2013TestDataset(test_gt_dir, test_img_dir)
-    max_size = (700, 700)
-
+def export_task3(img_dir, classifier_weight_path, detector_weight_path,
+                 alphabet=datasets.ALPHANUMERIC, submit_dir='submit',
+                 thresh=0.3, verbose=True, gt_path=None):
     # make submit dirs
-    submit_task3_dirpath = os.path.join(submit_dir, 'word_recognition')
-    Path(submit_task3_dirpath).mkdir(parents=True, exist_ok=True)
+    Path(submit_dir).mkdir(parents=True, exist_ok=True)
 
     # instantiate models
     detector = CRAFT(pretrained=True, num_class=2, linear=True).cuda()
@@ -245,23 +241,68 @@ def make_submit_file_word(test_img_dir, test_gt_dir,
     classifier.load_state_dict(torch.load(classifier_weight_path))
     classifier.eval()
 
+    # prepare results filename
+    submit_name = f"task3.txt"
+    submit_path = os.path.join(submit_dir, submit_name)
 
-    # get predictions for all test images
-    for img, _, _, pil_img in testset:
-        filename = os.path.basename(pil_img.filename)
-        orig_w, orig_h = pil_img.width, pil_img.height
+    # read gt file
+    if gt_dir:
+        with open(gt_dir, 'a') as f:
+            gt = f.read()
+    else:
+        gt = ""
 
-        print(filename + '... ', end='')
-        wordBBs, words = recognizer(img, detector, classifier, alphabet,
-                                    thresh=thresh)
-        if wordBBs is None:    # write blank files
-            print("No characters found. Making blank file... ", end='')
-            submit_name = f"res_{filename[:-4]}.txt"
-            submit_path = os.path.join(submit_task1_dirpath, submit_name)
-            with open(submit_path, 'w') as f:
-                f.write("")
+    # get predictions for all images
+    img_names = get_filenames(img_dir, ['.png'], recursive=False)
+    for img_name in img_names:
+        res_name = img_name[4:]
+        img_path = os.path.join(img_dir, img_path)
 
-            continue
+        # convert PIL.Image to torch.Tensor (1, C, H, W)
+        img = np.array(PIL.Image.open(img_path))
+        img = torch.from_numpy(img).transpose(2,0,1)[None, ...].cuda()
+
+        # get heatmaps
+        with torch.no_grad():
+            output, _ = detector_model(img.float())
+            char_heatmap = output[0, :, :, :1]  # (H, W, 1)
+
+        cropped_chars, _, _, _ = map_to_crop(img[0],
+                                             char_heatmap, thresh=thresh,
+                                             expand_factor=expand_factor)
+        if cropped_chars is not None:
+            # get character predicitons
+            with torch.no_grad():
+                onehots = classifier_model(cropped_chars.double())
+                chars = onehot_to_chars(onehots, alphabet)
+
+            # string has same order as charBBs
+            string = ""
+            for c in chars:
+                if c is None:
+                    string += '?'
+                elif c == '"':
+                    string += r'\"'
+                elif c == '\\':
+                    string += r'\\'
+                else:
+                    string += c
+        else:
+            string = ""
+
+        # write to file
+        contents = f'{res_name}, "{string}"'
+        if verbose:
+            print(contents, end='')
+            if gt:
+                pattern = re.compile(re.escape(img_name) + r',\ "(.*)"')
+                matches = re.search(pattern, gt)
+                if matches:
+                    print("\tgt: {matches.group(1)}", end='')
+            print('')
+
+        with open(submit_path, 'a') as f:
+            f.write(contents, end='')
 
     print("Done!")
 
