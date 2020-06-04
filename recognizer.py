@@ -7,6 +7,7 @@ import PIL.Image
 import pandas as pd
 import os.path
 from pathlib import Path
+import re
 
 import datasets
 from image_proc import genCharBB, cropBB
@@ -127,10 +128,9 @@ def recognizer(img, detector_model, classifier_model, alphabet,
     return wordBBs, words
 
 
-def export_task1_4(test_img_dir, test_gt_dir,
-                     classifier_weight_path, detector_weight_path,
-                     alphabet=datasets.ALPHANUMERIC, submit_dir='submit',
-                     thresh=0.3):
+def export_task1_4(test_img_dir, test_gt_dir, classifier_weight_path,
+                   detector_weight_path, alphabet=datasets.ALPHANUMERIC,
+                   submit_dir='submit', thresh=0.3):
     testset = datasets.ICDAR2013TestDataset(test_gt_dir, test_img_dir)
     max_size = (700, 700)
 
@@ -228,7 +228,8 @@ def export_task1_4(test_img_dir, test_gt_dir,
 
 def export_task3(img_dir, classifier_weight_path, detector_weight_path,
                  alphabet=datasets.ALPHANUMERIC, submit_dir='submit',
-                 thresh=0.3, verbose=True, gt_path=None):
+                 expand_factor=3, thresh=0.3, verbose=True, gt_path=None,
+                 min_side_length=16):
     # make submit dirs
     Path(submit_dir).mkdir(parents=True, exist_ok=True)
 
@@ -244,10 +245,12 @@ def export_task3(img_dir, classifier_weight_path, detector_weight_path,
     # prepare results filename
     submit_name = f"task3.txt"
     submit_path = os.path.join(submit_dir, submit_name)
+    with open(submit_path, 'w') as f:   # clear contents first
+        f.write("")
 
     # read gt file
-    if gt_dir:
-        with open(gt_dir, 'a') as f:
+    if gt_path:
+        with open(gt_path, 'r') as f:
             gt = f.read()
     else:
         gt = ""
@@ -255,16 +258,31 @@ def export_task3(img_dir, classifier_weight_path, detector_weight_path,
     # get predictions for all images
     img_names = get_filenames(img_dir, ['.png'], recursive=False)
     for img_name in img_names:
-        res_name = img_name[4:]
-        img_path = os.path.join(img_dir, img_path)
+        res_name = img_name[5:]
+        img_path = os.path.join(img_dir, img_name)
+
+        # get image
+        img = PIL.Image.open(img_path).convert('RGB')
+
+        # resize if too small (ie when side < 16)
+        w, h = img.width, img.height
+        if min(h, w) < min_side_length:
+            if h <= w:
+                ratio = min_side_length / h
+            elif w < h:
+                ratio = min_side_length / w
+
+            new_size = (int(ratio*w), int(ratio*h))
+
+            img = img.resize(new_size)
 
         # convert PIL.Image to torch.Tensor (1, C, H, W)
-        img = np.array(PIL.Image.open(img_path))
-        img = torch.from_numpy(img).transpose(2,0,1)[None, ...].cuda()
+        img = ((np.array(img) / 255.0) - 0.5) * 2
+        img = torch.from_numpy(img).permute(2,0,1)[None, ...].cuda()
 
         # get heatmaps
         with torch.no_grad():
-            output, _ = detector_model(img.float())
+            output, _ = detector(img.float())
             char_heatmap = output[0, :, :, :1]  # (H, W, 1)
 
         cropped_chars, _, _, _ = map_to_crop(img[0],
@@ -273,7 +291,7 @@ def export_task3(img_dir, classifier_weight_path, detector_weight_path,
         if cropped_chars is not None:
             # get character predicitons
             with torch.no_grad():
-                onehots = classifier_model(cropped_chars.double())
+                onehots = classifier(cropped_chars.double())
                 chars = onehot_to_chars(onehots, alphabet)
 
             # string has same order as charBBs
@@ -291,18 +309,18 @@ def export_task3(img_dir, classifier_weight_path, detector_weight_path,
             string = ""
 
         # write to file
-        contents = f'{res_name}, "{string}"'
+        contents = f'{res_name}, "{string}"\n'
         if verbose:
-            print(contents, end='')
+            print(contents[:-1], end='')
             if gt:
                 pattern = re.compile(re.escape(img_name) + r',\ "(.*)"')
                 matches = re.search(pattern, gt)
                 if matches:
-                    print("\tgt: {matches.group(1)}", end='')
+                    print(f'\tgt: "{matches.group(1)}"', end='')
             print('')
 
         with open(submit_path, 'a') as f:
-            f.write(contents, end='')
+            f.write(contents)
 
     print("Done!")
 
