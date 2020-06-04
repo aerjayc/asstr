@@ -2,6 +2,8 @@ import numpy as np
 import torch
 
 import h5py
+import os
+import os.path
 
 import image_proc
 
@@ -36,6 +38,23 @@ def h5py_to_numpy(h5):
         numpy_arr[i] = element
 
     return numpy_arr
+
+def get_filenames(directory, extensions, recursive=False):
+    fnames = []
+    at_root = True
+    for dir_, _, files in os.walk(directory):
+        for fname in sorted(files):
+            if os.path.splitext(fname)[1].lower() in extensions:
+                rel_dir = os.path.relpath(dir_, directory)
+                if at_root:
+                    fnames.append(fname)
+                else:
+                    fnames.append(os.path.join(rel_dir, fname))
+        if not recursive:
+            break
+        at_root = False
+
+    return fnames
 
 
 # Functions on strings
