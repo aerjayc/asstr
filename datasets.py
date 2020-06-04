@@ -17,7 +17,7 @@ import os.path
 
 from dataset_utils import shuffle_in_unison, max_shape, h5py_to_numpy,\
                           u2ToStr, txtToInstance, string_to_onehot,\
-                          filter_BBs, BB_augment
+                          filter_BBs, BB_augment, get_filenames
 from image_proc import cropBB
 
 
@@ -319,14 +319,7 @@ class ICDAR2013Dataset(Dataset):
         self.img_dir = img_dir
 
         img_exts = ['.jpg', '.jpeg', '.png', '.bmp']
-        self.img_names = []
-        # self.img_paths = []
-        _, _, files = next(os.walk(img_dir))
-        for file in sorted(files):
-            if os.path.splitext(file)[1].lower() in img_exts:
-                self.img_names.append(file)
-                # path_name = os.path.join(img_dir, file)
-                # self.img_paths.append(path_name)
+        self.img_names = get_filenames(img_dir, img_exts, recursive=False)
 
     def __len__(self):
         return len(self.img_names)
@@ -336,7 +329,7 @@ class ICDAR2013Dataset(Dataset):
             idx = idx.tolist()
 
         img_name = self.img_names[idx]
-        gt_name = f"{img_name[:3]}_GT.txt"  # generalize this
+        gt_name = os.path.splitext(img_name)[0] + "_GT.txt"
         img_path = os.path.join(self.img_dir, img_name)
         gt_path = os.path.join(self.gt_dir, gt_name)
 
@@ -383,14 +376,7 @@ class ICDAR2013TestDataset(Dataset):
         self.normalize = normalize
 
         img_exts = ['.jpg', '.jpeg', '.png', '.bmp']
-        self.img_names = []
-        # self.img_paths = []
-        _, _, files = next(os.walk(img_dir))
-        for file in sorted(files):
-            if os.path.splitext(file)[1].lower() in img_exts:
-                self.img_names.append(file)
-                # path_name = os.path.join(img_dir, file)
-                # self.img_paths.append(path_name)
+        self.img_names = get_filenames(img_dir, img_exts, recursive=False)
 
     def __len__(self):
         return len(self.img_names)
