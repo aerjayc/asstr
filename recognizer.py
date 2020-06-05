@@ -173,6 +173,8 @@ def export_task1_4(test_img_dir, test_gt_dir, classifier_weight_path,
             img = cv2.resize(img, dsize=max_size)  # HWC
             img = torch.from_numpy(img).permute(2,0,1)  # CHW
             new_w, new_h = max_size
+        else:
+            new_w, new_h = orig_w, orig_h
 
         print(filename + '... ', end='')
         wordBBs, words = recognizer(img, detector, classifier, alphabet,
