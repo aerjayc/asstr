@@ -1,8 +1,16 @@
 # Scene Text Recognition by Reading Individual Characters
 
+### Demo
+
+https://colab.research.google.com/drive/1nz6SZgc6J_i5w6ZkUi1_ZrN7f3GusBy_#scrollTo=8pJTGXiycl3M
+
+### Weights
+
+- Classifier: https://drive.google.com/file/d/1rDbsqBFRpiby7FTfJAEZdiiAdgtmKMb1/view?usp=sharing (for alphabet of `datasets.ALPHANUMERIC`)
+
+- Detector: https://drive.google.com/file/d/1_vD0pK2qAAobfe55C7wPbTOV4SJj2YEI/view?usp=sharing
 
 ### Algorithms and Models Used
-
 
 ### Results
 
